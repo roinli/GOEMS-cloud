@@ -1,0 +1,51 @@
+# Tomcat
+server:
+  port: 39205
+
+# Spring
+spring:
+  application:
+    # 应用名称
+    name: @artifactId@
+  profiles:
+    # 环境配置
+    active: @profiles.active@
+  cloud:
+    nacos:
+      discovery:
+        # 服务注册地址
+        server-addr: ${NACOS_HOST:127.0.0.1}:${NACOS_PORT:8848}
+        # 注册到Nacos的服务名，避免下划线导致Gateway lb://host 非法
+        service: ems-server
+        # 服务注册ip和端口
+        ip: ${NETWORK_IP:127.0.0.1}
+        port: ${server.port}
+      config:
+        # 配置中心地址
+        server-addr: ${spring.cloud.nacos.discovery.server-addr}
+        # 配置文件格式
+        file-extension: yml
+        # 共享配置
+        shared-configs:
+          - application-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
+
+# EMS single-node scheduling (disabled unless explicitly enabled per environment)
+ems:
+  schedule:
+    enabled: ${EMS_SCHEDULE_ENABLED:false}
+    realtime-cron: ${EMS_SCHEDULE_REALTIME_CRON:0 * * * * ?}
+    history-cron: ${EMS_SCHEDULE_HISTORY_CRON:0 2/5 * * * ?}
+    hourly-report-cron: ${EMS_SCHEDULE_HOURLY_REPORT_CRON:0 10 * * * ?}
+    daily-report-cron: ${EMS_SCHEDULE_DAILY_REPORT_CRON:0 20 0 * * ?}
+    monthly-report-cron: ${EMS_SCHEDULE_MONTHLY_REPORT_CRON:0 40 0 1 * ?}
+    yearly-report-cron: ${EMS_SCHEDULE_YEARLY_REPORT_CRON:0 10 1 1 1 ?}
+    gap-fill-cron: ${EMS_SCHEDULE_GAP_FILL_CRON:0 35 * * * ?}
+    late-repair-cron: ${EMS_SCHEDULE_LATE_REPAIR_CRON:0 30 2 * * ?}
+    retention-cron: ${EMS_SCHEDULE_RETENTION_CRON:0 30 3 * * ?}
+  metric:
+    detail-retention-days: ${EMS_METRIC_DETAIL_RETENTION_DAYS:7}
+    repair-lookback-hours: ${EMS_METRIC_REPAIR_LOOKBACK_HOURS:2}
+    late-repair-days: ${EMS_METRIC_LATE_REPAIR_DAYS:3}
+    sync-log-retention-days: ${EMS_METRIC_SYNC_LOG_RETENTION_DAYS:7}
+    task-retention-days: ${EMS_METRIC_TASK_RETENTION_DAYS:30}
+    statistics-start-time: ${EMS_METRIC_STATISTICS_START_TIME:}

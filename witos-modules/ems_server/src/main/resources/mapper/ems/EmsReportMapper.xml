@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.witos.ems.server.mapper.EmsReportMapper">
+
+    <sql id="reportScope">
+        <if test="scope != null and scope.scopeRestricted">
+            <choose>
+                <when test="(scope.companyIds != null and scope.companyIds.size() > 0) or (scope.stationIds != null and scope.stationIds.size() > 0)">
+                    and (
+                    <if test="scope.companyIds != null and scope.companyIds.size() > 0">
+                        r.company_id in
+                        <foreach collection="scope.companyIds" item="companyId" open="(" separator="," close=")">
+                            #{companyId}
+                        </foreach>
+                    </if>
+                    <if test="scope.stationIds != null and scope.stationIds.size() > 0">
+                        <if test="scope.companyIds != null and scope.companyIds.size() > 0">
+                            or
+                        </if>
+                        r.station_id in
+                        <foreach collection="scope.stationIds" item="stationId" open="(" separator="," close=")">
+                            #{stationId}
+                        </foreach>
+                    </if>
+                    )
+                </when>
+                <otherwise>
+                    and 1 = 0
+                </otherwise>
+            </choose>
+        </if>
+    </sql>
+
+    <sql id="reportFromAndWhere">
+        from
+        <choose>
+            <when test="reportType == 'station'">
+                <choose>
+                    <when test="periodType == 'HOUR'">ems_report_station_hour r</when>
+                    <when test="periodType == 'MONTH'">ems_report_station_month r</when>
+                    <when test="periodType == 'YEAR'">ems_report_station_year r</when>
+                    <otherwise>ems_report_station_day r</otherwise>
+                </choose>
+                left join ems_station s on s.id = r.station_id and s.del_flag = '0'
+            </when>
+            <otherwise>
+                <choose>
+                    <when test="periodType == 'HOUR'">ems_report_device_hour r</when>
+                    <when test="periodType == 'MONTH'">ems_report_device_month r</when>
+                    <when test="periodType == 'YEAR'">ems_report_device_year r</when>
+                    <otherwise>ems_report_device_day r</otherwise>
+                </choose>
+                left join ems_device d on d.id = r.device_id and d.del_flag = '0'
+            </otherwise>
+        </choose>
+        left join ems_company c on c.id = r.company_id and c.del_flag = '0'
+        where 1 = 1
+        <include refid="reportScope"/>
+        <if test="query.companyId != null and query.companyId != ''">
+            and r.company_id = #{query.companyId}
+        </if>
+        <if test="query.stationId != null and query.stationId != ''">
+            and r.station_id = #{query.stationId}
+        </if>
+        <if test="query.deviceName != null and query.deviceName != ''">
+            and d.device_name like concat('%', #{query.deviceName}, '%')
+        </if>
+        <if test="query.dataQuality != null and query.dataQuality != ''">
+            and r.data_quality = #{query.dataQuality}
+        </if>
+        <if test="reportType == 'inverter'">
+            and r.device_type = 'INVERTER'
+        </if>
+        <if test="reportType == 'pcs'">
+            and r.device_type = 'PCS'
+        </if>
+        <if test="reportType == 'storage'">
+            and r.device_type = 'ESS'
+        </if>
+        <if test="reportType == 'meter'">
+            and r.device_type = 'METER'
+        </if>
+        <if test="reportType == 'controller'">
+            and r.device_type = 'CONTROLLER'
+        </if>
+        <if test="query.startTime != null and query.startTime != ''">
+            and r.stat_time <![CDATA[ >= ]]> #{query.startTime}
+        </if>
+        <if test="query.endTime != null and query.endTime != ''">
+            and r.stat_time <![CDATA[ <= ]]> concat(#{query.endTime}, ' 23:59:59')
+        </if>
+        <if test="query.runningState != null and query.runningState != ''">
+            and d.status = #{query.runningState}
+        </if>
+        <if test="query.batteryStatus != null and query.batteryStatus != ''">
+            and d.status = #{query.batteryStatus}
+        </if>
+    </sql>
+
+    <select id="countReportRows" resultType="java.lang.Long">
+        select count(1)
+        <include refid="reportFromAndWhere"/>
+    </select>
+
+    <select id="selectReportRows" resultType="java.util.LinkedHashMap">
+        select
+        <choose>
+            <when test="reportType == 'station'">
+                r.station_id as stationId,
+                s.station_name as stationName,
+                r.generation_kwh as generationKwh,
+                r.charge_kwh as chargeKwh,
+                r.discharge_kwh as dischargeKwh,
+                r.consumption_kwh as consumptionKwh,
+                r.grid_import_kwh as gridImportKwh,
+                r.grid_export_kwh as gridExportKwh,
+                r.revenue_amount as revenueAmount,
+                r.feed_in_revenue as feedInRevenue,
+                r.self_use_saving as selfUseSaving,
+                r.storage_arbitrage_revenue as storageArbitrageRevenue,
+                r.purchase_cost as purchaseCost,
+                r.revenue_quality_reason as revenueQualityReason,
+                r.equivalent_hours as equivalentHours,
+                r.co2_reduction_kg as co2ReductionKg,
+                r.standard_coal_kg as standardCoalKg,
+                r.equivalent_trees as equivalentTrees,
+            </when>
+            <otherwise>
+                r.device_id as deviceId,
+                d.device_name as deviceName,
+                d.device_type as deviceType,
+                r.generation_kwh as generationKwh,
+                r.charge_kwh as chargeKwh,
+                r.charge_kwh as chargeEnergyKwh,
+                r.discharge_kwh as dischargeKwh,
+                r.discharge_kwh as dischargeEnergyKwh,
+                r.runtime_hours as runtimeHours,
+                r.runtime_hours as chargeDurationHours,
+                r.runtime_hours as dischargeDurationHours,
+                r.peak_power_kw as peakPowerKw,
+                r.peak_power_kw as activePowerKw,
+                r.avg_soc as soc,
+                r.avg_soc as avgSoc,
+                r.avg_soh as soh,
+                r.avg_soh as avgSoh,
+                r.alarm_count as alarmCount,
+                concat(coalesce(r.alarm_count, 0), '条') as alarmSummary,
+                d.status as runningState,
+                d.status as batteryStatus,
+                d.status as faultState,
+            </otherwise>
+        </choose>
+        r.tenant_id as tenantId,
+        r.company_id as companyId,
+        c.company_name as companyName,
+        r.stat_time as statTime,
+        r.data_quality as dataQuality,
+        r.quality_reason as qualityReason
+        <include refid="reportFromAndWhere"/>
+        order by r.stat_time desc,
+        <choose>
+            <when test="reportType == 'station'">r.station_id</when>
+            <otherwise>r.device_id</otherwise>
+        </choose>
+        asc
+        <if test="query.exportAll == null or query.exportAll != 'true'">
+            limit #{query.offset}, #{query.pageSize}
+        </if>
+    </select>
+
+    <select id="selectLifecycleSummary" resultType="java.util.LinkedHashMap">
+        select count(1) as recordCount,
+               min(r.stat_time) as minStatTime,
+               max(r.stat_time) as maxStatTime,
+               sum(case when r.data_quality is null or r.data_quality <![CDATA[<>]]> 'GOOD' then 1 else 0 end) as badQualityCount
+        from
+        <choose>
+            <when test="reportType == 'station'">
+                <choose>
+                    <when test="periodType == 'HOUR'">ems_report_station_hour r</when>
+                    <when test="periodType == 'MONTH'">ems_report_station_month r</when>
+                    <when test="periodType == 'YEAR'">ems_report_station_year r</when>
+                    <otherwise>ems_report_station_day r</otherwise>
+                </choose>
+            </when>
+            <otherwise>
+                <choose>
+                    <when test="periodType == 'HOUR'">ems_report_device_hour r</when>
+                    <when test="periodType == 'MONTH'">ems_report_device_month r</when>
+                    <when test="periodType == 'YEAR'">ems_report_device_year r</when>
+                    <otherwise>ems_report_device_day r</otherwise>
+                </choose>
+                left join ems_device d on d.id = r.device_id and d.del_flag = '0'
+            </otherwise>
+        </choose>
+        where 1 = 1
+        <include refid="reportScope"/>
+        <if test="query.companyId != null and query.companyId != ''">
+            and r.company_id = #{query.companyId}
+        </if>
+        <if test="query.stationId != null and query.stationId != ''">
+            and r.station_id = #{query.stationId}
+        </if>
+        <if test="query.deviceName != null and query.deviceName != ''">
+            and d.device_name like concat('%', #{query.deviceName}, '%')
+        </if>
+        <if test="query.dataQuality != null and query.dataQuality != ''">
+            and r.data_quality = #{query.dataQuality}
+        </if>
+        <if test="reportType == 'inverter'">
+            and r.device_type = 'INVERTER'
+        </if>
+        <if test="reportType == 'pcs'">
+            and r.device_type = 'PCS'
+        </if>
+        <if test="reportType == 'storage'">
+            and r.device_type = 'ESS'
+        </if>
+    </select>
+
+</mapper>

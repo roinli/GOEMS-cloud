@@ -1,0 +1,31 @@
+# Nacos shared configuration sample for platform registration mail: application-${spring.profiles.active}.yml
+# Secrets must be supplied by the deployment environment, not committed to Nacos exports.
+# Tenant alarm SMTP remains in ems_alarm_mail_config and does not use these settings.
+spring:
+  mail:
+    host: ${EMS_MAIL_HOST:}
+    port: ${EMS_MAIL_PORT:587}
+    username: ${EMS_MAIL_USERNAME:}
+    password: ${EMS_MAIL_PASSWORD:}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
+ems:
+  registration:
+    installer-enabled: ${EMS_INSTALLER_REGISTRATION_ENABLED:false}
+    email-code-expiration-minutes: 10
+    email-rate-limit-seconds: 60
+    ip-rate-limit-seconds: 10
+    device-rate-limit-seconds: 10
+  mail:
+    from: ${EMS_MAIL_FROM:${EMS_MAIL_USERNAME:}}
+    registration-subject: EMS安装商注册邮箱验证码
+
+# For SMTP over port 465, disable STARTTLS above and use:
+# spring.mail.properties.mail.smtp.ssl.enable: true

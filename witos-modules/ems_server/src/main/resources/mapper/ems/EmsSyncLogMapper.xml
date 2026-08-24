@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.witos.ems.server.mapper.EmsSyncLogMapper">
+
+    <insert id="upsertFailure">
+        insert into ems_sync_log
+        (tenant_id, company_id, station_id, sync_type, biz_key, issue_key, status,
+         started_at, finished_at, error_message, error_hash, occurrence_count,
+         first_occurred_at, last_occurred_at, create_by, create_time, update_by, update_time, remark)
+        values
+        (#{row.tenantId}, #{row.companyId}, #{row.stationId}, #{row.syncType}, #{row.bizKey}, #{row.issueKey},
+         #{row.status}, #{row.startedAt}, #{row.finishedAt}, #{row.errorMessage}, #{row.errorHash},
+         #{row.occurrenceCount}, #{row.firstOccurredAt}, #{row.lastOccurredAt}, #{row.createBy},
+         #{row.createTime}, #{row.updateBy}, #{row.updateTime}, #{row.remark})
+        on duplicate key update
+            company_id = values(company_id),
+            station_id = values(station_id),
+            biz_key = values(biz_key),
+            status = values(status),
+            finished_at = values(finished_at),
+            error_message = values(error_message),
+            error_hash = values(error_hash),
+            occurrence_count = occurrence_count + 1,
+            last_occurred_at = values(last_occurred_at),
+            update_by = values(update_by),
+            update_time = values(update_time),
+            remark = values(remark)
+    </insert>
+
+</mapper>

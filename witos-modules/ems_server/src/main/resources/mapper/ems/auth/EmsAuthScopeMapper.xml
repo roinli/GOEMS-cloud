@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.witos.ems.server.mapper.EmsAuthScopeMapper">
+
+    <select id="selectUserProfile" resultType="java.util.LinkedHashMap">
+        select user_id as userId,
+               primary_company_id as primaryCompanyId,
+               is_default_installer_admin as isDefaultInstallerAdmin,
+               status
+        from ems_user_profile
+        where user_id = #{userId}
+        limit 1
+    </select>
+
+    <select id="selectUserRoleKeys" resultType="java.lang.String">
+        select distinct r.role_key
+        from sys_user_role ur
+                 inner join sys_role r on r.role_id = ur.role_id
+        where ur.user_id = #{userId}
+          and r.del_flag = '0'
+    </select>
+
+    <select id="selectUserScopes" resultType="java.util.LinkedHashMap">
+        select scope_type as scopeType,
+               company_id as companyId,
+               station_id as stationId
+        from ems_user_scope
+        where user_id = #{userId}
+        order by id asc
+    </select>
+
+    <select id="selectCompanyTree" resultType="java.util.LinkedHashMap">
+        select id, parent_id as parentId, ancestors
+        from ems_company
+        where del_flag = '0'
+    </select>
+
+    <select id="selectCompanyIdsByStationIds" resultType="java.lang.Long">
+        select distinct company_id
+        from ems_station
+        where del_flag = '0'
+          and id in
+        <foreach collection="stationIds" item="stationId" open="(" separator="," close=")">
+            #{stationId}
+        </foreach>
+    </select>
+
+</mapper>

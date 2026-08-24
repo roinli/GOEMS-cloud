@@ -1,0 +1,14 @@
+# 基础镜像
+FROM openjdk:8-jre-alpine
+# author
+LABEL maintainer="zb"
+# 挂载目录
+VOLUME /home/witos
+# 指定路径
+WORKDIR /home/witos
+# 创建必要的子目录
+RUN mkdir -p conf
+# 复制jar文件到路径
+COPY ./jar/ems-register.jar /home/witos/ems-register.jar
+# 启动认证服务
+ENTRYPOINT ["java","-jar","ems-register.jar"]

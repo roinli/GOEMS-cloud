@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.witos.ems.server.mapper.EmsAlarmEventMapper">
+
+    <sql id="eventSelect">
+        select e.id,
+               e.tenant_id as tenantId,
+               e.company_id as companyId,
+               c.company_name as companyName,
+               e.station_id as stationId,
+               s.station_name as stationName,
+               e.device_id as deviceId,
+               d.device_name as deviceName,
+               e.alarm_code as alarmCode,
+               e.alarm_name as alarmName,
+               e.severity,
+               e.alarm_status as alarmStatus,
+               e.occurrence_count as occurrenceCount,
+               e.first_time as firstTime,
+               e.last_time as lastTime,
+               e.clear_time as clearTime,
+               e.clear_type as clearType,
+               e.clear_by as clearBy,
+               e.ack_time as ackTime,
+               e.ack_by as ackBy,
+               e.source_type as sourceType,
+               e.source_payload as sourcePayload,
+               coalesce(e.last_time, e.first_time) as time,
+               coalesce(e.alarm_name, e.alarm_code) as message
+        from ems_alarm_event e
+                 left join ems_company c on c.id = e.company_id and c.del_flag = '0'
+                 left join ems_station s on s.id = e.station_id and s.del_flag = '0'
+                 left join ems_device d on d.id = e.device_id and d.del_flag = '0'
+        where 1 = 1
+    </sql>
+
+    <sql id="eventScope">
+        <if test="scope != null and scope.scopeRestricted">
+            <choose>
+                <when test="(scope.companyIds != null and scope.companyIds.size() > 0) or (scope.stationIds != null and scope.stationIds.size() > 0)">
+                    and (
+                    <if test="scope.companyIds != null and scope.companyIds.size() > 0">
+                        e.company_id in
+                        <foreach collection="scope.companyIds" item="companyId" open="(" separator="," close=")">
+                            #{companyId}
+                        </foreach>
+                    </if>
+                    <if test="scope.stationIds != null and scope.stationIds.size() > 0">
+                        <if test="scope.companyIds != null and scope.companyIds.size() > 0">
+                            or
+                        </if>
+                        e.station_id in
+                        <foreach collection="scope.stationIds" item="stationId" open="(" separator="," close=")">
+                            #{stationId}
+                        </foreach>
+                    </if>
+                    )
+                </when>
+                <otherwise>
+                    and 1 = 0
+                </otherwise>
+            </choose>
+        </if>
+    </sql>
+
+    <sql id="eventQuery">
+        <if test="query.companyId != null and query.companyId != ''">
+            and e.company_id = #{query.companyId}
+        </if>
+        <if test="query.stationId != null and query.stationId != ''">
+            and e.station_id = #{query.stationId}
+        </if>
+        <if test="query.deviceId != null and query.deviceId != ''">
+            and e.device_id = #{query.deviceId}
+        </if>
+        <if test="query.deviceName != null and query.deviceName != ''">
+            and d.device_name like concat('%', #{query.deviceName}, '%')
+        </if>
+        <if test="query.alarmName != null and query.alarmName != ''">
+            and e.alarm_name like concat('%', #{query.alarmName}, '%')
+        </if>
+        <if test="query.severity != null and query.severity != ''">
+            and e.severity = #{query.severity}
+        </if>
+        <if test="query.sourceType != null and query.sourceType != ''">
+            and e.source_type = #{query.sourceType}
+        </if>
+        <if test="query.alarmStatus != null and query.alarmStatus != ''">
+            and e.alarm_status = #{query.alarmStatus}
+        </if>
+        <if test="query.startTime != null and query.startTime != ''">
+            and coalesce(e.last_time, e.first_time) <![CDATA[>=]]> concat(#{query.startTime}, ' 00:00:00')
+        </if>
+        <if test="query.endTime != null and query.endTime != ''">
+            and coalesce(e.last_time, e.first_time) <![CDATA[<=]]> concat(#{query.endTime}, ' 23:59:59')
+        </if>
+    </sql>
+
+    <select id="selectAlarmEventPage" resultType="java.util.LinkedHashMap">
+        <include refid="eventSelect"/>
+        <include refid="eventScope"/>
+        <include refid="eventQuery"/>
+        order by coalesce(e.last_time, e.first_time) desc
+    </select>
+
+    <select id="selectAlarmEventList" resultType="java.util.LinkedHashMap">
+        <include refid="eventSelect"/>
+        <include refid="eventScope"/>
+        <include refid="eventQuery"/>
+        order by coalesce(e.last_time, e.first_time) desc
+    </select>
+
+    <select id="selectCurrentAlarmList" resultType="java.util.LinkedHashMap">
+        <include refid="eventSelect"/>
+        <include refid="eventScope"/>
+        <include refid="eventQuery"/>
+        and e.alarm_status = 'ACTIVE'
+        order by coalesce(e.last_time, e.first_time) desc
+    </select>
+
+    <select id="selectAlarmEventDetail" resultType="java.util.LinkedHashMap">
+        <include refid="eventSelect"/>
+        <include refid="eventScope"/>
+        and e.id = #{id}
+        limit 1
+    </select>
+
+    <update id="ackAlarmEvent">
+        update ems_alarm_event
+        set alarm_status = 'ACKED',
+            ack_time = now(),
+            ack_by = #{ackBy},
+            update_time = now()
+        where id = #{id}
+          and tenant_id = #{tenantId}
+          and alarm_status = 'ACTIVE'
+    </update>
+
+    <update id="clearAlarmEvent">
+        update ems_alarm_event
+        set alarm_status = 'CLEARED',
+            clear_time = now(),
+            clear_type = #{clearType},
+            clear_by = #{clearBy},
+            update_time = now()
+        where id = #{id}
+          and tenant_id = #{tenantId}
+          and alarm_status in ('ACTIVE', 'ACKED')
+    </update>
+
+    <select id="selectActiveMergeTarget" resultType="com.witos.ems.server.domain.entity.EmsAlarmEvent">
+        select *
+        from ems_alarm_event
+        where tenant_id = #{tenantId}
+          and station_id = #{stationId}
+          and alarm_code = #{alarmCode}
+          and alarm_status = 'ACTIVE'
+        <choose>
+            <when test="deviceId != null">
+                and device_id = #{deviceId}
+            </when>
+            <otherwise>
+                and device_id is null
+            </otherwise>
+        </choose>
+        order by id desc
+        limit 1
+    </select>
+
+    <select id="selectDistinctTenantIdsForHistoryCleanup" resultType="java.lang.Long">
+        select distinct tenant_id
+        from ems_alarm_event
+        where alarm_status in ('ACKED', 'CLEARED')
+    </select>
+
+    <delete id="cleanupHistoricalEvents">
+        delete from ems_alarm_event
+        where tenant_id = #{tenantId}
+          and alarm_status in ('ACKED', 'CLEARED')
+          and coalesce(clear_time, ack_time, last_time, first_time) <![CDATA[<]]> #{beforeTime}
+    </delete>
+
+</mapper>

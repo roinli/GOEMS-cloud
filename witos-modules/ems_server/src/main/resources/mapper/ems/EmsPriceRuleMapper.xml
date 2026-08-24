@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.witos.ems.server.mapper.EmsPriceRuleMapper">
+
+    <sql id="priceSelect">
+        select r.id,
+               r.tenant_id as tenantId,
+               r.company_id as companyId,
+               case when r.company_id = 0 then '安装商级' else ifnull(c.company_name, '公司级') end as companyName,
+               pa.stationName,
+               r.rule_name as ruleName,
+               r.price_type as priceType,
+               r.price_mode as priceMode,
+               r.base_price as basePrice,
+               r.is_default as isDefault,
+               pa.effectiveStart,
+               pa.effectiveEnd,
+               pa.permanent,
+               r.status,
+               r.remark
+        from ems_price_rule r
+                 left join ems_company c on c.id = r.company_id and c.del_flag = '0'
+                 left join (
+                    select a.rule_id,
+                           group_concat(
+                               case
+                                   when a.station_id = 0 then '公司级'
+                                   else ifnull(s.station_name, concat('电站#', a.station_id))
+                               end
+                               order by a.station_id separator '、'
+                           ) as stationName,
+                           min(a.effective_start) as effectiveStart,
+                           max(a.effective_end) as effectiveEnd,
+                           min(a.permanent) as permanent
+                    from ems_price_apply a
+                             left join ems_station s on s.id = a.station_id and s.del_flag = '0'
+                    where a.del_flag = '0'
+                    group by a.rule_id
+                 ) pa on pa.rule_id = r.id
+        where r.del_flag = '0'
+    </sql>
+
+    <sql id="priceScope">
+        <if test="scope != null and scope.scopeRestricted">
+            <choose>
+                <when test="scope.companyIds != null and scope.companyIds.size() > 0">
+                    and (r.company_id = 0 or r.company_id in
+                    <foreach collection="scope.companyIds" item="companyId" open="(" separator="," close=")">
+                        #{companyId}
+                    </foreach>
+                    )
+                </when>
+                <otherwise>
+                    and r.company_id = 0
+                </otherwise>
+            </choose>
+        </if>
+    </sql>
+
+    <select id="selectPricePage" resultType="java.util.LinkedHashMap">
+        <include refid="priceSelect"/>
+        <include refid="priceScope"/>
+        <include refid="priceQuery"/>
+        order by r.id desc
+    </select>
+
+    <sql id="priceQuery">
+        <if test="query.companyId != null and query.companyId != ''">
+            and r.company_id = #{query.companyId}
+        </if>
+        <if test="query.ruleName != null and query.ruleName != ''">
+            and r.rule_name like concat('%', #{query.ruleName}, '%')
+        </if>
+        <if test="query.priceType != null and query.priceType != ''">
+            and r.price_type = #{query.priceType}
+        </if>
+        <if test="query.stationId != null and query.stationId != ''">
+            and exists (
+                select 1
+                from ems_price_apply qa
+                where qa.rule_id = r.id
+                  and qa.del_flag = '0'
+                  and qa.station_id = #{query.stationId}
+            )
+        </if>
+        <if test="query.status != null and query.status != ''">
+            and r.status = #{query.status}
+        </if>
+    </sql>
+
+    <select id="selectPriceList" resultType="java.util.LinkedHashMap">
+        <include refid="priceSelect"/>
+        <include refid="priceScope"/>
+        <include refid="priceQuery"/>
+        order by r.id desc
+    </select>
+
+    <select id="selectPriceDetail" resultType="java.util.LinkedHashMap">
+        <include refid="priceSelect"/>
+        and r.id = #{id}
+        <include refid="priceScope"/>
+        limit 1
+    </select>
+
+</mapper>

@@ -1,0 +1,20 @@
+package com.witos.common.security.feign;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import feign.RequestInterceptor;
+
+/**
+ * Feign 配置注册
+ *
+ * @author witos
+ **/
+@Configuration
+public class FeignAutoConfiguration
+{
+    @Bean
+    public RequestInterceptor requestInterceptor()
+    {
+        return new com.witos.common.security.feign.FeignRequestInterceptor();
+    }
+}

@@ -1,0 +1,643 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.witos.ems.server.mapper.EmsReportSyncTaskMapper">
+
+    <update id="claimTask">
+        update ems_report_sync_task
+        set task_status = 'RUNNING',
+            retry_count = retry_count + #{retryIncrement},
+            affected_rows = 0,
+            error_message = null,
+            execute_start_time = #{executeStartTime},
+            execute_end_time = null,
+            update_by = #{username},
+            update_time = now()
+        where id = #{id}
+          and tenant_id = #{tenantId}
+          and del_flag = '0'
+          and (task_status in ('PENDING', 'FAILED')
+            <if test="allowSuccess">
+                or task_status = 'SUCCESS'
+            </if>
+          )
+    </update>
+
+    <update id="finishTask">
+        update ems_report_sync_task
+        set task_status = #{taskStatus},
+            affected_rows = #{affectedRows},
+            error_message = #{errorMessage},
+            execute_end_time = #{executeEndTime},
+            update_by = #{username},
+            update_time = now()
+        where id = #{id}
+          and tenant_id = #{tenantId}
+          and del_flag = '0'
+          and task_status = 'RUNNING'
+    </update>
+
+    <sql id="stationTargetTable">
+        <choose>
+            <when test="periodType == 'DAY'">ems_report_station_day</when>
+            <when test="periodType == 'MONTH'">ems_report_station_month</when>
+            <otherwise>ems_report_station_year</otherwise>
+        </choose>
+    </sql>
+
+    <sql id="stationSourceTable">
+        <choose>
+            <when test="periodType == 'DAY'">ems_report_station_hour</when>
+            <when test="periodType == 'MONTH'">ems_report_station_day</when>
+            <otherwise>ems_report_station_month</otherwise>
+        </choose>
+    </sql>
+
+    <sql id="deviceTargetTable">
+        <choose>
+            <when test="periodType == 'DAY'">ems_report_device_day</when>
+            <when test="periodType == 'MONTH'">ems_report_device_month</when>
+            <otherwise>ems_report_device_year</otherwise>
+        </choose>
+    </sql>
+
+    <sql id="deviceSourceTable">
+        <choose>
+            <when test="periodType == 'DAY'">ems_report_device_hour</when>
+            <when test="periodType == 'MONTH'">ems_report_device_day</when>
+            <otherwise>ems_report_device_month</otherwise>
+        </choose>
+    </sql>
+
+    <sql id="stationBucketExpr">
+        <choose>
+            <when test="periodType == 'DAY'">str_to_date(date_format(stat_time, '%Y-%m-%d 00:00:00'), '%Y-%m-%d %H:%i:%s')</when>
+            <when test="periodType == 'MONTH'">str_to_date(date_format(stat_time, '%Y-%m-01 00:00:00'), '%Y-%m-%d %H:%i:%s')</when>
+            <otherwise>str_to_date(date_format(stat_time, '%Y-01-01 00:00:00'), '%Y-%m-%d %H:%i:%s')</otherwise>
+        </choose>
+    </sql>
+
+    <sql id="qualityExpr">
+        case
+            when sum(case when data_quality = 'BAD' then 1 else 0 end) > 0 then 'BAD'
+            when sum(case when data_quality = 'MISSING' then 1 else 0 end) > 0 then 'MISSING'
+            when sum(case when data_quality = 'PARTIAL' then 1 else 0 end) > 0 then 'PARTIAL'
+            else 'GOOD'
+        end
+    </sql>
+
+    <sql id="hourBucketExpr">
+        str_to_date(date_format(bucket_time, '%Y-%m-%d %H:00:00'), '%Y-%m-%d %H:%i:%s')
+    </sql>
+
+    <delete id="deleteStationHourRows">
+        delete from ems_report_station_hour
+        where tenant_id = #{tenantId}
+        <if test="companyId != null and companyId > 0">
+            and company_id = #{companyId}
+        </if>
+        <if test="stationId != null and stationId > 0">
+            and station_id = #{stationId}
+        </if>
+        and stat_time <![CDATA[ >= ]]> #{startTime}
+        and stat_time <![CDATA[ <= ]]> #{endTime}
+    </delete>
+
+    <insert id="insertStationHourRowsFromDeviceHour">
+        insert into ems_report_station_hour
+        (tenant_id, company_id, station_id, stat_time, generation_kwh, charge_kwh, discharge_kwh, consumption_kwh, grid_import_kwh, grid_export_kwh,
+         revenue_amount, feed_in_revenue, self_use_saving, storage_arbitrage_revenue, purchase_cost, revenue_quality_reason,
+         equivalent_hours, co2_reduction_kg, standard_coal_kg, equivalent_trees, data_quality, quality_reason, create_time, update_time)
+        with raw_metrics as (
+            select h.tenant_id,
+                   h.company_id,
+                   h.station_id,
+                   <include refid="hourBucketExpr"/> as stat_time,
+                   h.bucket_time,
+                   concat(ifnull(nullif(h.edge_id, ''), concat('device:', h.device_id)), '/',
+                          ifnull(nullif(h.component_id, ''), concat('device:', h.device_id))) as source_component_key,
+                   case
+                       when h.metric_key in ('generation', 'generationKwh', 'generation_kwh') then 'GENERATION'
+                       when h.metric_key in ('gridImport', 'gridImportKwh', 'grid_import_kwh', 'importEnergyKwh') then 'GRID_IMPORT'
+                       when h.metric_key in ('gridExport', 'gridExportKwh', 'grid_export_kwh', 'exportEnergyKwh') then 'GRID_EXPORT'
+                       when h.metric_key in ('consumption', 'consumptionKwh', 'consumption_kwh', 'loadEnergyKwh') then 'CONSUMPTION'
+                       when h.metric_key in ('charge', 'chargeKwh', 'charge_kwh', 'chargeEnergyKwh')
+                           and ifnull(h.metric_value, 0) &lt;&gt; 0 then 'CHARGE'
+                       when h.metric_key in ('discharge', 'dischargeKwh', 'discharge_kwh', 'dischargeEnergyKwh')
+                           and ifnull(h.metric_value, 0) &lt;&gt; 0 then 'DISCHARGE'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                           and (h.source_role = 'GRID_METER' or (d.device_type = 'METER' and h.component_id in ('meter0', 'grid0')))
+                           and ifnull(h.metric_value, 0) &gt; 0
+                           and not exists (
+                               select 1
+                               from ems_metric_history_5min e
+                               where e.tenant_id = h.tenant_id
+                                 and e.device_id = h.device_id
+                                 and e.bucket_time = h.bucket_time
+                                 and e.quality in ('GOOD', 'PARTIAL')
+                                 and e.metric_key in ('gridImport', 'gridImportKwh', 'grid_import_kwh', 'importEnergyKwh')
+                                 and ifnull(e.metric_value, 0) &lt;&gt; 0
+                           ) then 'GRID_IMPORT'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                           and (h.source_role = 'GRID_METER' or (d.device_type = 'METER' and h.component_id in ('meter0', 'grid0')))
+                           and ifnull(h.metric_value, 0) &lt; 0
+                           and not exists (
+                               select 1
+                               from ems_metric_history_5min e
+                               where e.tenant_id = h.tenant_id
+                                 and e.device_id = h.device_id
+                                 and e.bucket_time = h.bucket_time
+                                 and e.quality in ('GOOD', 'PARTIAL')
+                                 and e.metric_key in ('gridExport', 'gridExportKwh', 'grid_export_kwh', 'exportEnergyKwh')
+                                 and ifnull(e.metric_value, 0) &lt;&gt; 0
+                           ) then 'GRID_EXPORT'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                           and (h.source_role in ('PRODUCTION_METER', 'INVERTER') or d.device_type = 'INVERTER') then 'GENERATION'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                           and h.source_role = 'CONSUMPTION_METER' then 'CONSUMPTION'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                           and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS'))
+                           and ifnull(h.metric_value, 0) &lt; 0 then 'CHARGE'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                           and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS'))
+                           and ifnull(h.metric_value, 0) &gt; 0 then 'DISCHARGE'
+                       when h.metric_key in ('chargePower', 'chargePowerKw', 'charge_power_kw') then 'CHARGE'
+                       when h.metric_key in ('dischargePower', 'dischargePowerKw', 'discharge_power_kw') then 'DISCHARGE'
+                       else null
+                   end as metric_group,
+                   case
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                           and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS'))
+                           then abs(ifnull(h.metric_value, 0)) / 12
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power', 'chargePower', 'chargePowerKw', 'charge_power_kw', 'dischargePower', 'dischargePowerKw', 'discharge_power_kw')
+                           then abs(ifnull(h.metric_value, 0)) / 12
+                       else ifnull(h.metric_value, 0)
+                   end as metric_value,
+                   case
+                       when h.source_priority is not null then h.source_priority
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                           and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS')) then 30
+                       when h.source_role = 'PRODUCTION_METER' then 10
+                       when h.source_role = 'GRID_METER' then 10
+                       when h.source_role = 'PCS' then 10
+                       when h.source_role = 'INVERTER' then 20
+                       when h.source_role = 'ESS' then 20
+                       when h.source_role = 'SUM' then 30
+                       when d.device_type = 'METER' then 10
+                       when d.device_type = 'PCS' then 10
+                       when d.device_type = 'INVERTER' then 20
+                       when d.device_type = 'ESS' then 20
+                       else 100
+                   end as source_rank,
+                   h.quality
+            from ems_metric_history_5min h
+                     inner join ems_device d on d.id = h.device_id and d.del_flag = '0'
+            where h.tenant_id = #{tenantId}
+            <if test="companyId != null and companyId > 0">
+                and h.company_id = #{companyId}
+            </if>
+            <if test="stationId != null and stationId > 0">
+                and h.station_id = #{stationId}
+            </if>
+            and h.bucket_time <![CDATA[ >= ]]> #{startTime}
+            and h.bucket_time <![CDATA[ <= ]]> #{endTime}
+        ), source_metrics as (
+            select tenant_id,
+                   company_id,
+                   station_id,
+                   stat_time,
+                   bucket_time,
+                   source_component_key,
+                   metric_group,
+                   source_rank,
+                   max(case when quality in ('GOOD', 'PARTIAL') then metric_value else null end) as metric_value,
+                   case
+                       when sum(case when quality = 'BAD' then 1 else 0 end) > 0 then 'BAD'
+                       when sum(case when quality = 'MISSING' then 1 else 0 end) > 0 then 'MISSING'
+                       when sum(case when quality = 'PARTIAL' then 1 else 0 end) > 0 then 'PARTIAL'
+                       else 'GOOD'
+                   end as data_quality,
+                   count(1) as source_count
+            from raw_metrics
+            where metric_group is not null
+            group by tenant_id, company_id, station_id, stat_time, bucket_time, source_component_key, metric_group, source_rank
+        ), preferred_source_rank as (
+            select tenant_id,
+                   station_id,
+                   stat_time,
+                   bucket_time,
+                   case
+                       when metric_group = 'GENERATION' then '__station_generation__'
+                       else source_component_key
+                   end as source_dedupe_key,
+                   metric_group,
+                   min(source_rank) as source_rank
+            from source_metrics
+            group by tenant_id,
+                     station_id,
+                     stat_time,
+                     bucket_time,
+                     case
+                         when metric_group = 'GENERATION' then '__station_generation__'
+                         else source_component_key
+                     end,
+                     metric_group
+        ), preferred_metrics as (
+            select m.*
+            from source_metrics m
+                     inner join preferred_source_rank p on p.tenant_id = m.tenant_id
+                          and p.station_id = m.station_id
+                          and p.stat_time = m.stat_time
+                          and p.bucket_time = m.bucket_time
+                          and p.metric_group = m.metric_group
+                          and p.source_dedupe_key = case
+                              when m.metric_group = 'GENERATION' then '__station_generation__'
+                              else m.source_component_key
+                          end
+                          and p.source_rank = m.source_rank
+        )
+        select tenant_id,
+               company_id,
+               station_id,
+               stat_time,
+               sum(case when metric_group = 'GENERATION' then ifnull(metric_value, 0) else 0 end) as generation_kwh,
+               sum(case when metric_group = 'CHARGE' then ifnull(metric_value, 0) else 0 end) as charge_kwh,
+               sum(case when metric_group = 'DISCHARGE' then ifnull(metric_value, 0) else 0 end) as discharge_kwh,
+               sum(case when metric_group = 'CONSUMPTION' then ifnull(metric_value, 0) else 0 end) as consumption_kwh,
+               sum(case when metric_group = 'GRID_IMPORT' then ifnull(metric_value, 0) else 0 end) as grid_import_kwh,
+               sum(case when metric_group = 'GRID_EXPORT' then ifnull(metric_value, 0) else 0 end) as grid_export_kwh,
+               0 as revenue_amount,
+               0 as feed_in_revenue,
+               0 as self_use_saving,
+               0 as storage_arbitrage_revenue,
+               0 as purchase_cost,
+               null as revenue_quality_reason,
+               0 as equivalent_hours,
+               0 as co2_reduction_kg,
+               0 as standard_coal_kg,
+               0 as equivalent_trees,
+               case
+                   when sum(case when data_quality = 'BAD' then 1 else 0 end) > 0 then 'BAD'
+                   when sum(case when data_quality = 'MISSING' then 1 else 0 end) > 0 then 'MISSING'
+                   when sum(case when data_quality = 'PARTIAL' then 1 else 0 end) > 0 then 'PARTIAL'
+                   else 'GOOD'
+               end as data_quality,
+               concat('按来源优先级聚合自', sum(source_count), '条5分钟指标记录') as quality_reason,
+               now(),
+               now()
+        from preferred_metrics
+        group by tenant_id, company_id, station_id, stat_time
+        on duplicate key update
+            company_id = values(company_id),
+            generation_kwh = values(generation_kwh),
+            charge_kwh = values(charge_kwh),
+            discharge_kwh = values(discharge_kwh),
+            consumption_kwh = values(consumption_kwh),
+            grid_import_kwh = values(grid_import_kwh),
+            grid_export_kwh = values(grid_export_kwh),
+            data_quality = values(data_quality),
+            quality_reason = values(quality_reason),
+            update_time = now()
+    </insert>
+
+    <select id="selectStationHourRows" resultType="java.util.LinkedHashMap">
+        select id,
+               tenant_id as tenantId,
+               company_id as companyId,
+               station_id as stationId,
+               stat_time as statTime,
+             generation_kwh as generationKwh,
+             charge_kwh as chargeKwh,
+             discharge_kwh as dischargeKwh,
+             grid_import_kwh as gridImportKwh,
+             grid_export_kwh as gridExportKwh
+        from ems_report_station_hour
+        where tenant_id = #{tenantId}
+        <if test="companyId != null and companyId > 0">
+            and company_id = #{companyId}
+        </if>
+        <if test="stationId != null and stationId > 0">
+            and station_id = #{stationId}
+        </if>
+        and stat_time <![CDATA[ >= ]]> #{startTime}
+        and stat_time <![CDATA[ <= ]]> #{endTime}
+    </select>
+
+    <update id="updateStationHourDerivedValues">
+        update ems_report_station_hour
+        set revenue_amount = #{revenueAmount},
+            feed_in_revenue = #{feedInRevenue},
+            self_use_saving = #{selfUseSaving},
+            storage_arbitrage_revenue = #{storageArbitrageRevenue},
+            purchase_cost = #{purchaseCost},
+            revenue_quality_reason = #{revenueQualityReason},
+            equivalent_hours = #{equivalentHours},
+            co2_reduction_kg = #{co2ReductionKg},
+            standard_coal_kg = #{standardCoalKg},
+            equivalent_trees = #{equivalentTrees},
+            update_time = now()
+        where id = #{id}
+    </update>
+
+    <delete id="deleteDeviceHourRows">
+        delete from ems_report_device_hour
+        where tenant_id = #{tenantId}
+        <if test="companyId != null and companyId > 0">
+            and company_id = #{companyId}
+        </if>
+        <if test="stationId != null and stationId > 0">
+            and station_id = #{stationId}
+        </if>
+        <if test="deviceType != null and deviceType != ''">
+            and device_type = #{deviceType}
+        </if>
+        and stat_time <![CDATA[ >= ]]> #{startTime}
+        and stat_time <![CDATA[ <= ]]> #{endTime}
+    </delete>
+
+    <insert id="insertDeviceHourRowsFrom5Min">
+        insert into ems_report_device_hour
+        (tenant_id, company_id, station_id, device_id, device_type, stat_time, generation_kwh, charge_kwh, discharge_kwh,
+         runtime_hours, peak_power_kw, avg_soc, avg_soh, alarm_count, data_quality, quality_reason, create_time, update_time)
+        select h.tenant_id,
+               h.company_id,
+               h.station_id,
+               h.device_id,
+               d.device_type,
+               <include refid="hourBucketExpr"/> as stat_time,
+               sum(case
+                   when h.quality in ('GOOD', 'PARTIAL')
+                       and h.metric_key in ('generation', 'generationKwh', 'generation_kwh') then ifnull(h.metric_value, 0)
+                   when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                       and h.quality = 'GOOD'
+                       and (h.source_role in ('PRODUCTION_METER', 'INVERTER') or d.device_type = 'INVERTER')
+                       and not exists (
+                           select 1
+                           from ems_metric_history_5min e
+                           where e.tenant_id = h.tenant_id
+                             and e.device_id = h.device_id
+                             and e.bucket_time = h.bucket_time
+                             and e.quality in ('GOOD', 'PARTIAL')
+                             and e.metric_key in ('generation', 'generationKwh', 'generation_kwh')
+                             and ifnull(e.metric_value, 0) &lt;&gt; 0
+                       ) then ifnull(h.metric_value, 0) / 12
+                   else 0
+               end) as generation_kwh,
+               sum(case
+                   when h.quality in ('GOOD', 'PARTIAL')
+                       and h.metric_key in ('charge', 'chargeKwh', 'charge_kwh', 'chargeEnergyKwh') then ifnull(h.metric_value, 0)
+                   when h.quality in ('GOOD', 'PARTIAL')
+                       and d.device_type = 'CHARGER'
+                       and h.metric_key in ('consumption', 'consumptionKwh', 'consumption_kwh', 'evcsChargeKwh')
+                       then ifnull(h.metric_value, 0)
+                   when h.quality = 'GOOD'
+                       and h.metric_key in ('chargePower', 'chargePowerKw', 'charge_power_kw') then abs(ifnull(h.metric_value, 0)) / 12
+                   when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                       and h.quality = 'GOOD'
+                       and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS'))
+                       and ifnull(h.metric_value, 0) &lt; 0
+                       and not exists (
+                           select 1
+                           from ems_metric_history_5min e
+                           where e.tenant_id = h.tenant_id
+                             and e.device_id = h.device_id
+                             and e.bucket_time = h.bucket_time
+                             and e.quality in ('GOOD', 'PARTIAL')
+                             and e.metric_key in ('charge', 'chargeKwh', 'charge_kwh', 'chargeEnergyKwh', 'chargePower', 'chargePowerKw', 'charge_power_kw')
+                             and ifnull(e.metric_value, 0) &lt;&gt; 0
+                       ) then abs(ifnull(h.metric_value, 0)) / 12
+                   else 0
+               end) as charge_kwh,
+               sum(case
+                   when h.quality in ('GOOD', 'PARTIAL')
+                       and h.metric_key in ('discharge', 'dischargeKwh', 'discharge_kwh', 'dischargeEnergyKwh') then ifnull(h.metric_value, 0)
+                   when h.quality = 'GOOD'
+                       and h.metric_key in ('dischargePower', 'dischargePowerKw', 'discharge_power_kw') then abs(ifnull(h.metric_value, 0)) / 12
+                   when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                       and h.quality = 'GOOD'
+                       and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS'))
+                       and ifnull(h.metric_value, 0) &gt; 0
+                       and not exists (
+                           select 1
+                           from ems_metric_history_5min e
+                           where e.tenant_id = h.tenant_id
+                             and e.device_id = h.device_id
+                             and e.bucket_time = h.bucket_time
+                             and e.quality in ('GOOD', 'PARTIAL')
+                             and e.metric_key in ('discharge', 'dischargeKwh', 'discharge_kwh', 'dischargeEnergyKwh', 'dischargePower', 'dischargePowerKw', 'discharge_power_kw')
+                             and ifnull(e.metric_value, 0) &lt;&gt; 0
+                       ) then abs(ifnull(h.metric_value, 0)) / 12
+                   else 0
+               end) as discharge_kwh,
+               sum(case
+                   when h.quality = 'GOOD'
+                       and h.metric_key in ('runtime', 'runtimeHours', 'runtime_hours') then ifnull(h.metric_value, 0)
+                   when h.quality = 'GOOD'
+                       and h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                       and (h.source_role in ('PRODUCTION_METER', 'INVERTER') or d.device_type = 'INVERTER')
+                       and ifnull(h.metric_value, 0) &gt; 0.01
+                       and not exists (
+                           select 1
+                           from ems_metric_history_5min e
+                           where e.tenant_id = h.tenant_id
+                             and e.device_id = h.device_id
+                             and e.bucket_time = h.bucket_time
+                             and e.quality = 'GOOD'
+                             and e.metric_key in ('runtime', 'runtimeHours', 'runtime_hours')
+                             and ifnull(e.metric_value, 0) &lt;&gt; 0
+                       ) then 1 / 12
+                   else 0
+               end) as runtime_hours,
+               max(case when h.quality = 'GOOD'
+                   and h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power') then ifnull(h.metric_value, 0) else 0 end) as peak_power_kw,
+               avg(case when h.quality = 'GOOD' and h.metric_key in ('soc', 'avgSoc') then h.metric_value else null end) as avg_soc,
+               avg(case when h.quality = 'GOOD' and h.metric_key in ('soh', 'avgSoh') then h.metric_value else null end) as avg_soh,
+               sum(case when h.quality = 'GOOD' and h.metric_key in ('alarmCount', 'alarm_count', 'alarm') then ifnull(h.metric_value, 0) else 0 end) as alarm_count,
+               case
+                   when sum(case when h.quality = 'BAD' then 1 else 0 end) > 0 then 'BAD'
+                   when sum(case when h.quality = 'MISSING' then 1 else 0 end) > 0 then 'MISSING'
+                   when sum(case when h.quality = 'PARTIAL' then 1 else 0 end) > 0 then 'PARTIAL'
+                   else 'GOOD'
+               end as data_quality,
+               concat('聚合自', count(1), '条5分钟指标记录') as quality_reason,
+               now(),
+               now()
+        from ems_metric_history_5min h
+                 inner join ems_device d on d.id = h.device_id and d.del_flag = '0'
+        where h.tenant_id = #{tenantId}
+        <if test="companyId != null and companyId > 0">
+            and h.company_id = #{companyId}
+        </if>
+        <if test="stationId != null and stationId > 0">
+            and h.station_id = #{stationId}
+        </if>
+        <if test="deviceType != null and deviceType != ''">
+            and d.device_type = #{deviceType}
+        </if>
+        and h.bucket_time <![CDATA[ >= ]]> #{startTime}
+        and h.bucket_time <![CDATA[ <= ]]> #{endTime}
+        group by h.tenant_id, h.company_id, h.station_id, h.device_id, d.device_type, <include refid="hourBucketExpr"/>
+        on duplicate key update
+            company_id = values(company_id),
+            station_id = values(station_id),
+            device_type = values(device_type),
+            generation_kwh = values(generation_kwh),
+            charge_kwh = values(charge_kwh),
+            discharge_kwh = values(discharge_kwh),
+            runtime_hours = values(runtime_hours),
+            peak_power_kw = values(peak_power_kw),
+            avg_soc = values(avg_soc),
+            avg_soh = values(avg_soh),
+            alarm_count = values(alarm_count),
+            data_quality = values(data_quality),
+            quality_reason = values(quality_reason),
+            update_time = now()
+    </insert>
+
+    <delete id="deleteStationAggregateRows">
+        delete from <include refid="stationTargetTable"/>
+        where tenant_id = #{tenantId}
+        <if test="companyId != null and companyId > 0">
+            and company_id = #{companyId}
+        </if>
+        <if test="stationId != null and stationId > 0">
+            and station_id = #{stationId}
+        </if>
+        and stat_time <![CDATA[ >= ]]> #{startTime}
+        and stat_time <![CDATA[ <= ]]> #{endTime}
+    </delete>
+
+    <insert id="insertStationAggregateRows">
+        insert into <include refid="stationTargetTable"/>
+        (tenant_id, company_id, station_id, stat_time, generation_kwh, charge_kwh, discharge_kwh, consumption_kwh, grid_import_kwh, grid_export_kwh,
+         revenue_amount, feed_in_revenue, self_use_saving, storage_arbitrage_revenue, purchase_cost, revenue_quality_reason,
+         equivalent_hours, co2_reduction_kg, standard_coal_kg, equivalent_trees, data_quality, quality_reason, create_time, update_time)
+        select tenant_id,
+               company_id,
+               station_id,
+               <include refid="stationBucketExpr"/> as stat_time,
+               sum(ifnull(generation_kwh, 0)) as generation_kwh,
+               sum(ifnull(charge_kwh, 0)) as charge_kwh,
+               sum(ifnull(discharge_kwh, 0)) as discharge_kwh,
+               sum(ifnull(consumption_kwh, 0)) as consumption_kwh,
+               sum(ifnull(grid_import_kwh, 0)) as grid_import_kwh,
+               sum(ifnull(grid_export_kwh, 0)) as grid_export_kwh,
+               sum(ifnull(revenue_amount, 0)) as revenue_amount,
+               sum(ifnull(feed_in_revenue, 0)) as feed_in_revenue,
+               sum(ifnull(self_use_saving, 0)) as self_use_saving,
+               sum(ifnull(storage_arbitrage_revenue, 0)) as storage_arbitrage_revenue,
+               sum(ifnull(purchase_cost, 0)) as purchase_cost,
+               group_concat(distinct revenue_quality_reason order by revenue_quality_reason separator ';') as revenue_quality_reason,
+               sum(ifnull(equivalent_hours, 0)) as equivalent_hours,
+               sum(ifnull(co2_reduction_kg, 0)) as co2_reduction_kg,
+               sum(ifnull(standard_coal_kg, 0)) as standard_coal_kg,
+               sum(ifnull(equivalent_trees, 0)) as equivalent_trees,
+               <include refid="qualityExpr"/> as data_quality,
+               concat('聚合自', count(1), '条源记录') as quality_reason,
+               now(),
+               now()
+        from <include refid="stationSourceTable"/>
+        where tenant_id = #{tenantId}
+        <if test="companyId != null and companyId > 0">
+            and company_id = #{companyId}
+        </if>
+        <if test="stationId != null and stationId > 0">
+            and station_id = #{stationId}
+        </if>
+        and stat_time <![CDATA[ >= ]]> #{startTime}
+        and stat_time <![CDATA[ <= ]]> #{endTime}
+        group by tenant_id, company_id, station_id, <include refid="stationBucketExpr"/>
+        on duplicate key update
+            company_id = values(company_id),
+            generation_kwh = values(generation_kwh),
+            charge_kwh = values(charge_kwh),
+            discharge_kwh = values(discharge_kwh),
+            consumption_kwh = values(consumption_kwh),
+            grid_import_kwh = values(grid_import_kwh),
+            grid_export_kwh = values(grid_export_kwh),
+            revenue_amount = values(revenue_amount),
+            feed_in_revenue = values(feed_in_revenue),
+            self_use_saving = values(self_use_saving),
+            storage_arbitrage_revenue = values(storage_arbitrage_revenue),
+            purchase_cost = values(purchase_cost),
+            revenue_quality_reason = values(revenue_quality_reason),
+            equivalent_hours = values(equivalent_hours),
+            co2_reduction_kg = values(co2_reduction_kg),
+            standard_coal_kg = values(standard_coal_kg),
+            equivalent_trees = values(equivalent_trees),
+            data_quality = values(data_quality),
+            quality_reason = values(quality_reason),
+            update_time = now()
+    </insert>
+
+    <delete id="deleteDeviceAggregateRows">
+        delete from <include refid="deviceTargetTable"/>
+        where tenant_id = #{tenantId}
+        <if test="companyId != null and companyId > 0">
+            and company_id = #{companyId}
+        </if>
+        <if test="stationId != null and stationId > 0">
+            and station_id = #{stationId}
+        </if>
+        <if test="deviceType != null and deviceType != ''">
+            and device_type = #{deviceType}
+        </if>
+        and stat_time <![CDATA[ >= ]]> #{startTime}
+        and stat_time <![CDATA[ <= ]]> #{endTime}
+    </delete>
+
+    <insert id="insertDeviceAggregateRows">
+        insert into <include refid="deviceTargetTable"/>
+        (tenant_id, company_id, station_id, device_id, device_type, stat_time, generation_kwh, charge_kwh, discharge_kwh,
+         runtime_hours, peak_power_kw, avg_soc, avg_soh, alarm_count, data_quality, quality_reason, create_time, update_time)
+        select tenant_id,
+               company_id,
+               station_id,
+               device_id,
+               device_type,
+               <include refid="stationBucketExpr"/> as stat_time,
+               sum(ifnull(generation_kwh, 0)) as generation_kwh,
+               sum(ifnull(charge_kwh, 0)) as charge_kwh,
+               sum(ifnull(discharge_kwh, 0)) as discharge_kwh,
+               sum(ifnull(runtime_hours, 0)) as runtime_hours,
+               max(ifnull(peak_power_kw, 0)) as peak_power_kw,
+               avg(avg_soc) as avg_soc,
+               avg(avg_soh) as avg_soh,
+               sum(ifnull(alarm_count, 0)) as alarm_count,
+               <include refid="qualityExpr"/> as data_quality,
+               concat('聚合自', count(1), '条源记录') as quality_reason,
+               now(),
+               now()
+        from <include refid="deviceSourceTable"/>
+        where tenant_id = #{tenantId}
+        <if test="companyId != null and companyId > 0">
+            and company_id = #{companyId}
+        </if>
+        <if test="stationId != null and stationId > 0">
+            and station_id = #{stationId}
+        </if>
+        <if test="deviceType != null and deviceType != ''">
+            and device_type = #{deviceType}
+        </if>
+        and stat_time <![CDATA[ >= ]]> #{startTime}
+        and stat_time <![CDATA[ <= ]]> #{endTime}
+        group by tenant_id, company_id, station_id, device_id, device_type, <include refid="stationBucketExpr"/>
+        on duplicate key update
+            company_id = values(company_id),
+            station_id = values(station_id),
+            device_type = values(device_type),
+            generation_kwh = values(generation_kwh),
+            charge_kwh = values(charge_kwh),
+            discharge_kwh = values(discharge_kwh),
+            runtime_hours = values(runtime_hours),
+            peak_power_kw = values(peak_power_kw),
+            avg_soc = values(avg_soc),
+            avg_soh = values(avg_soh),
+            alarm_count = values(alarm_count),
+            data_quality = values(data_quality),
+            quality_reason = values(quality_reason),
+            update_time = now()
+    </insert>
+
+</mapper>

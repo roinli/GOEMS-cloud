@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.witos.ems.server.mapper.EmsEmployeeMapper">
+
+    <sql id="employeeSelect">
+        select u.user_id as userId,
+               u.tenant_id as tenantId,
+               u.user_name as userName,
+               u.nick_name as nickName,
+               u.phonenumber,
+               u.email,
+               u.status,
+               u.remark,
+               u.dept_id as deptId,
+               d.dept_name as deptName,
+               p.primary_company_id as companyId,
+               p.is_default_installer_admin as isDefaultInstallerAdmin,
+               c.company_name as companyName,
+               group_concat(distinct r.role_name order by r.role_sort separator ' / ') as roleNames
+        from sys_user u
+                 inner join ems_user_profile p on p.user_id = u.user_id
+                 left join ems_company c on c.id = p.primary_company_id and c.del_flag = '0'
+                 left join sys_dept d on d.dept_id = u.dept_id and d.del_flag = '0'
+                 left join sys_user_role ur on ur.user_id = u.user_id
+                 left join sys_role r on r.role_id = ur.role_id and r.del_flag = '0' and left(r.role_key, 4) = 'ems_'
+        where u.del_flag = '0'
+    </sql>
+
+    <sql id="employeeScope">
+        <if test="scope != null and scope.scopeRestricted">
+            <choose>
+                <when test="scope.companyIds != null and scope.companyIds.size() > 0">
+                    and p.primary_company_id in
+                    <foreach collection="scope.companyIds" item="companyId" open="(" separator="," close=")">
+                        #{companyId}
+                    </foreach>
+                </when>
+                <otherwise>
+                    and 1 = 0
+                </otherwise>
+            </choose>
+        </if>
+    </sql>
+
+    <sql id="employeeQuery">
+        <if test="query.companyId != null and query.companyId != ''">
+            and p.primary_company_id = #{query.companyId}
+        </if>
+        <if test="query.userName != null and query.userName != ''">
+            and u.user_name like concat('%', #{query.userName}, '%')
+        </if>
+        <if test="query.phonenumber != null and query.phonenumber != ''">
+            and u.phonenumber like concat('%', #{query.phonenumber}, '%')
+        </if>
+        <if test="query.email != null and query.email != ''">
+            and u.email like concat('%', #{query.email}, '%')
+        </if>
+        <if test="query.status != null and query.status != ''">
+            and u.status = #{query.status}
+        </if>
+        <if test="query.roleId != null and query.roleId != ''">
+            and exists (
+                select 1
+                from sys_user_role ur2
+                where ur2.user_id = u.user_id
+                  and ur2.role_id = #{query.roleId}
+            )
+        </if>
+    </sql>
+
+    <select id="selectEmployeePage" resultType="java.util.LinkedHashMap">
+        <include refid="employeeSelect"/>
+        <include refid="employeeScope"/>
+        <include refid="employeeQuery"/>
+        group by u.user_id, u.tenant_id, u.user_name, u.nick_name, u.phonenumber, u.email, u.status, u.remark,
+                 u.dept_id, d.dept_name, p.primary_company_id, p.is_default_installer_admin, c.company_name
+        order by u.user_id desc
+    </select>
+
+    <select id="selectEmployeeList" resultType="java.util.LinkedHashMap">
+        <include refid="employeeSelect"/>
+        <include refid="employeeScope"/>
+        <include refid="employeeQuery"/>
+        group by u.user_id, u.tenant_id, u.user_name, u.nick_name, u.phonenumber, u.email, u.status, u.remark,
+                 u.dept_id, d.dept_name, p.primary_company_id, p.is_default_installer_admin, c.company_name
+        order by u.user_id desc
+    </select>
+
+    <select id="selectEmployeeDetail" resultType="java.util.LinkedHashMap">
+        <include refid="employeeSelect"/>
+        and u.user_id = #{userId}
+        <include refid="employeeScope"/>
+        group by u.user_id, u.tenant_id, u.user_name, u.nick_name, u.phonenumber, u.email, u.status, u.remark,
+                 u.dept_id, d.dept_name, p.primary_company_id, p.is_default_installer_admin, c.company_name
+        limit 1
+    </select>
+
+</mapper>

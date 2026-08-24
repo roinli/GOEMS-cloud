@@ -1,0 +1,1022 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.witos.ems.server.mapper.EmsViewMapper">
+
+    <select id="selectStationRevenueSummary" resultType="java.util.LinkedHashMap">
+        select station_id as stationId,
+               ifnull(sum(revenue_amount), 0) as revenueAmount
+        from ems_report_station_hour
+        where stat_time &gt;= curdate()
+          and stat_time &lt; date_add(curdate(), interval 1 day)
+          and station_id in
+        <foreach collection="stationIds" item="stationId" open="(" separator="," close=")">
+            #{stationId}
+        </foreach>
+        group by station_id
+    </select>
+
+    <select id="selectStationRevenueQuality" resultType="java.util.LinkedHashMap">
+        select station_id as stationId,
+               count(1) as reportCount,
+               group_concat(distinct nullif(revenue_quality_reason, '') order by revenue_quality_reason separator ';') as revenueMessage
+        from ems_report_station_hour
+        where stat_time &gt;= curdate()
+          and stat_time &lt; date_add(curdate(), interval 1 day)
+          and station_id in
+        <foreach collection="stationIds" item="stationId" open="(" separator="," close=")">
+            #{stationId}
+        </foreach>
+        group by station_id
+    </select>
+
+    <select id="selectStationHomeMetricSummary" resultType="java.util.LinkedHashMap">
+        with station_scope as (
+            select s.tenant_id,
+                   s.id as station_id
+            from ems_station s
+            where s.del_flag = '0'
+              and s.id in
+            <foreach collection="stationIds" item="stationId" open="(" separator="," close=")">
+                #{stationId}
+            </foreach>
+        ), raw_today_metrics as (
+            select h.tenant_id,
+                   h.station_id,
+                   h.bucket_time,
+                   concat(ifnull(nullif(h.edge_id, ''), concat('device:', h.device_id)), '/',
+                          ifnull(nullif(h.component_id, ''), concat('device:', h.device_id))) as source_component_key,
+                   case
+                       when h.metric_key in ('generation', 'generationKwh', 'generation_kwh') then 'GENERATION'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role in ('PRODUCTION_METER', 'INVERTER') or d.device_type = 'INVERTER') then 'GENERATION'
+                       when h.metric_key in ('charge', 'chargeKwh', 'charge_kwh', 'chargeEnergyKwh')
+                            and ifnull(h.metric_value, 0) &lt;&gt; 0 then 'CHARGE'
+                       when h.metric_key in ('chargePower', 'chargePowerKw', 'charge_power_kw') then 'CHARGE'
+                       when h.metric_key in ('discharge', 'dischargeKwh', 'discharge_kwh', 'dischargeEnergyKwh')
+                            and ifnull(h.metric_value, 0) &lt;&gt; 0 then 'DISCHARGE'
+                       when h.metric_key in ('dischargePower', 'dischargePowerKw', 'discharge_power_kw') then 'DISCHARGE'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS'))
+                            and ifnull(h.metric_value, 0) &lt; 0 then 'CHARGE'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS'))
+                            and ifnull(h.metric_value, 0) &gt; 0 then 'DISCHARGE'
+                       else null
+                   end as metric_group,
+                   case
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS'))
+                           then abs(ifnull(h.metric_value, 0)) / 12
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power',
+                                             'chargePower', 'chargePowerKw', 'charge_power_kw',
+                                             'dischargePower', 'dischargePowerKw', 'discharge_power_kw')
+                           then abs(ifnull(h.metric_value, 0)) / 12
+                       else ifnull(h.metric_value, 0)
+                   end as metric_value,
+                   case
+                       when h.source_priority is not null then h.source_priority
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS')) then 30
+                       when h.source_role in ('PRODUCTION_METER', 'GRID_METER', 'PCS') then 10
+                       when h.source_role in ('INVERTER', 'ESS') then 20
+                       when h.source_role = 'SUM' then 30
+                       when d.device_type in ('METER', 'PCS') then 10
+                       when d.device_type in ('INVERTER', 'ESS') then 20
+                       else 100
+                   end as source_rank
+            from ems_metric_history_5min h
+                     inner join ems_device d on d.id = h.device_id and d.del_flag = '0'
+                     inner join station_scope scope on scope.tenant_id = h.tenant_id and scope.station_id = h.station_id
+            where h.bucket_time &gt;= curdate()
+              and h.bucket_time &lt; date_add(curdate(), interval 1 day)
+              and (
+                    h.quality = 'GOOD'
+                    or (h.quality = 'PARTIAL'
+                        and h.metric_key in ('generation', 'generationKwh', 'generation_kwh',
+                                             'charge', 'chargeKwh', 'charge_kwh', 'chargeEnergyKwh',
+                                             'discharge', 'dischargeKwh', 'discharge_kwh', 'dischargeEnergyKwh'))
+                  )
+              and h.metric_key in ('generation', 'generationKwh', 'generation_kwh',
+                                   'activePower', 'activePowerKw', 'active_power_kw', 'power',
+                                   'charge', 'chargeKwh', 'charge_kwh', 'chargeEnergyKwh',
+                                   'chargePower', 'chargePowerKw', 'charge_power_kw',
+                                   'discharge', 'dischargeKwh', 'discharge_kwh', 'dischargeEnergyKwh',
+                                   'dischargePower', 'dischargePowerKw', 'discharge_power_kw')
+        ), today_source_metrics as (
+            select tenant_id,
+                   station_id,
+                   bucket_time,
+                   source_component_key,
+                   metric_group,
+                   source_rank,
+                   max(metric_value) as metric_value
+            from raw_today_metrics
+            where metric_group is not null
+            group by tenant_id, station_id, bucket_time, source_component_key, metric_group, source_rank
+        ), preferred_today_source as (
+            select tenant_id,
+                   station_id,
+                   bucket_time,
+                   metric_group,
+                   min(source_rank) as source_rank
+            from today_source_metrics
+            group by tenant_id, station_id, bucket_time, metric_group
+        ), preferred_today_metrics as (
+            select m.tenant_id,
+                   m.station_id,
+                   m.metric_group,
+                   m.metric_value
+            from today_source_metrics m
+                     inner join preferred_today_source p on p.tenant_id = m.tenant_id
+                         and p.station_id = m.station_id
+                         and p.bucket_time = m.bucket_time
+                         and p.metric_group = m.metric_group
+                         and p.source_rank = m.source_rank
+        ), today_energy as (
+            select tenant_id,
+                   station_id,
+                   sum(case when metric_group = 'GENERATION' then metric_value else 0 end) as today_generation_kwh,
+                   sum(case when metric_group = 'CHARGE' then metric_value else 0 end) as today_charge_kwh,
+                   sum(case when metric_group = 'DISCHARGE' then metric_value else 0 end) as today_discharge_kwh
+            from preferred_today_metrics
+            group by tenant_id, station_id
+        ), historic_day_energy as (
+            select r.tenant_id,
+                   r.station_id,
+                   sum(ifnull(r.generation_kwh, 0)) as total_generation_kwh,
+                   sum(ifnull(r.charge_kwh, 0)) as total_charge_kwh,
+                   sum(ifnull(r.discharge_kwh, 0)) as total_discharge_kwh,
+                   sum(case when r.stat_time &gt;= date_format(curdate(), '%Y-01-01')
+                            then ifnull(r.generation_kwh, 0) else 0 end) as year_generation_kwh
+            from ems_report_station_day r
+                     inner join station_scope scope on scope.tenant_id = r.tenant_id and scope.station_id = r.station_id
+            where r.stat_time &lt; curdate()
+            group by r.tenant_id, r.station_id
+        ), historic_hour_energy as (
+            select r.tenant_id,
+                   r.station_id,
+                   sum(ifnull(r.generation_kwh, 0)) as total_generation_kwh,
+                   sum(ifnull(r.charge_kwh, 0)) as total_charge_kwh,
+                   sum(ifnull(r.discharge_kwh, 0)) as total_discharge_kwh,
+                   sum(case when r.stat_time &gt;= date_format(curdate(), '%Y-01-01')
+                            then ifnull(r.generation_kwh, 0) else 0 end) as year_generation_kwh
+            from ems_report_station_hour r
+                     inner join station_scope scope on scope.tenant_id = r.tenant_id and scope.station_id = r.station_id
+            where r.stat_time &lt; curdate()
+              and not exists (
+                    select 1
+                    from ems_report_station_day daily
+                    where daily.tenant_id = r.tenant_id
+                      and daily.station_id = r.station_id
+                      and daily.stat_time &gt;= date(r.stat_time)
+                      and daily.stat_time &lt; date_add(date(r.stat_time), interval 1 day)
+                  )
+            group by r.tenant_id, r.station_id
+        ), historic_energy as (
+            select source.tenant_id,
+                   source.station_id,
+                   sum(source.total_generation_kwh) as total_generation_kwh,
+                   sum(source.total_charge_kwh) as total_charge_kwh,
+                   sum(source.total_discharge_kwh) as total_discharge_kwh,
+                   sum(source.year_generation_kwh) as year_generation_kwh
+            from (
+                select * from historic_day_energy
+                union all
+                select * from historic_hour_energy
+            ) source
+            group by source.tenant_id, source.station_id
+        ), latest_power_bucket as (
+            select h.tenant_id,
+                   h.station_id,
+                   max(h.bucket_time) as bucket_time
+            from ems_metric_history_5min h
+                     inner join ems_device d on d.id = h.device_id and d.del_flag = '0'
+                     inner join station_scope scope on scope.tenant_id = h.tenant_id and scope.station_id = h.station_id
+            where h.bucket_time &gt;= date_sub(now(), interval 30 minute)
+              and h.quality = 'GOOD'
+              and h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+              and (h.source_role in ('PRODUCTION_METER', 'INVERTER') or d.device_type = 'INVERTER')
+            group by h.tenant_id, h.station_id
+        ), raw_current_power as (
+            select h.tenant_id,
+                   h.station_id,
+                   h.bucket_time,
+                   case
+                       when h.source_priority is not null then h.source_priority
+                       when h.source_role = 'PRODUCTION_METER' then 10
+                       when h.source_role = 'INVERTER' then 20
+                       when d.device_type = 'METER' then 10
+                       when d.device_type = 'INVERTER' then 20
+                       else 100
+                   end as source_rank,
+                   ifnull(h.metric_value, 0) as active_power_kw
+            from ems_metric_history_5min h
+                     inner join ems_device d on d.id = h.device_id and d.del_flag = '0'
+                     inner join latest_power_bucket latest on latest.tenant_id = h.tenant_id
+                         and latest.station_id = h.station_id
+                         and latest.bucket_time = h.bucket_time
+            where h.quality = 'GOOD'
+              and h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+              and (h.source_role in ('PRODUCTION_METER', 'INVERTER') or d.device_type = 'INVERTER')
+        ), preferred_current_source as (
+            select tenant_id,
+                   station_id,
+                   bucket_time,
+                   min(source_rank) as source_rank
+            from raw_current_power
+            group by tenant_id, station_id, bucket_time
+        ), current_power as (
+            select p.tenant_id,
+                   p.station_id,
+                   sum(p.active_power_kw) as current_power_kw
+            from raw_current_power p
+                     inner join preferred_current_source s on s.tenant_id = p.tenant_id
+                         and s.station_id = p.station_id
+                         and s.bucket_time = p.bucket_time
+                         and s.source_rank = p.source_rank
+            group by p.tenant_id, p.station_id
+        ), snapshot_power_source as (
+            select ms.tenant_id,
+                   ms.station_id,
+                   case
+                       when cm.source_priority is not null then cm.source_priority
+                       when cm.source_role = 'PRODUCTION_METER' then 10
+                       when cm.source_role = 'INVERTER' then 20
+                       when d.device_type = 'INVERTER' then 20
+                       else 100
+                   end as source_rank,
+                   ifnull(ms.metric_value, 0) as active_power_kw
+            from ems_metric_snapshot ms
+                     inner join ems_device d on d.id = ms.device_id and d.del_flag = '0'
+                     inner join station_scope scope on scope.tenant_id = ms.tenant_id and scope.station_id = ms.station_id
+                     left join ems_device_component dc on dc.tenant_id = ms.tenant_id
+                         and dc.device_id = ms.device_id
+                         and dc.bind_status = 'ACTIVE'
+                         and dc.enabled = '0'
+                         and dc.del_flag = '0'
+                     left join ems_channel_mapping cm on cm.enabled = '0'
+                         and cm.metric_key = ms.metric_key
+                         and (cm.device_type is null or cm.device_type = dc.component_type)
+                         and (cm.component_id_pattern is null or dc.component_id regexp cm.component_id_pattern)
+            where ms.sample_time &gt;= date_sub(now(), interval 10 minute)
+              and ms.quality = 'GOOD'
+              and ms.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+              and (cm.source_role in ('PRODUCTION_METER', 'INVERTER') or d.device_type = 'INVERTER')
+        ), snapshot_power_rank as (
+            select tenant_id,
+                   station_id,
+                   min(source_rank) as source_rank
+            from snapshot_power_source
+            group by tenant_id, station_id
+        ), snapshot_power as (
+            select p.tenant_id,
+                   p.station_id,
+                   sum(p.active_power_kw) as current_power_kw
+            from snapshot_power_source p
+                     inner join snapshot_power_rank s on s.tenant_id = p.tenant_id
+                         and s.station_id = p.station_id
+                         and s.source_rank = p.source_rank
+            group by p.tenant_id, p.station_id
+        ), storage_capacity as (
+            select d.tenant_id,
+                   d.station_id,
+                   sum(ifnull(d.rated_capacity, 0)) as storage_capacity
+            from ems_device d
+                     inner join station_scope scope on scope.tenant_id = d.tenant_id and scope.station_id = d.station_id
+            where d.del_flag = '0'
+              and d.device_type in ('ESS', 'STORAGE')
+            group by d.tenant_id, d.station_id
+        )
+        select scope.station_id as stationId,
+               ifnull(today.today_generation_kwh, 0) as todayGenerationKwh,
+               ifnull(today.today_charge_kwh, 0) as todayChargeKwh,
+               ifnull(today.today_discharge_kwh, 0) as todayDischargeKwh,
+               ifnull(snapshot.current_power_kw, ifnull(power.current_power_kw, 0)) as currentPowerKw,
+               ifnull(hist.total_generation_kwh, 0) + ifnull(today.today_generation_kwh, 0) as totalGenerationKwh,
+               ifnull(hist.total_charge_kwh, 0) + ifnull(today.today_charge_kwh, 0) as totalChargeKwh,
+               ifnull(hist.total_discharge_kwh, 0) + ifnull(today.today_discharge_kwh, 0) as totalDischargeKwh,
+               ifnull(hist.year_generation_kwh, 0) + ifnull(today.today_generation_kwh, 0) as yearGenerationKwh,
+               ifnull(capacity.storage_capacity, 0) as storageCapacity
+        from station_scope scope
+                 left join today_energy today on today.tenant_id = scope.tenant_id and today.station_id = scope.station_id
+                 left join historic_energy hist on hist.tenant_id = scope.tenant_id and hist.station_id = scope.station_id
+                 left join current_power power on power.tenant_id = scope.tenant_id and power.station_id = scope.station_id
+                 left join snapshot_power snapshot on snapshot.tenant_id = scope.tenant_id and snapshot.station_id = scope.station_id
+                 left join storage_capacity capacity on capacity.tenant_id = scope.tenant_id and capacity.station_id = scope.station_id
+        order by scope.station_id desc
+    </select>
+
+    <select id="selectStationDailyTrend" resultType="java.util.LinkedHashMap">
+        with station_scope as (
+            select s.tenant_id,
+                   s.id as station_id
+            from ems_station s
+            where s.del_flag = '0'
+              and s.id in
+            <foreach collection="stationIds" item="stationId" open="(" separator="," close=")">
+                #{stationId}
+            </foreach>
+        ), raw_today_generation as (
+            select h.tenant_id,
+                   h.station_id,
+                   h.bucket_time,
+                   concat(ifnull(nullif(h.edge_id, ''), concat('device:', h.device_id)), '/',
+                          ifnull(nullif(h.component_id, ''), concat('device:', h.device_id))) as source_component_key,
+                   case
+                       when h.source_priority is not null then h.source_priority
+                       when h.source_role = 'PRODUCTION_METER' then 10
+                       when h.source_role = 'INVERTER' then 20
+                       when d.device_type = 'INVERTER' then 20
+                       else 100
+                   end as source_rank,
+                   case
+                       when h.metric_key in ('generation', 'generationKwh', 'generation_kwh') then ifnull(h.metric_value, 0)
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role in ('PRODUCTION_METER', 'INVERTER') or d.device_type = 'INVERTER')
+                           then abs(ifnull(h.metric_value, 0)) / 12
+                       else 0
+                   end as generation_kwh
+            from ems_metric_history_5min h
+                     inner join ems_device d on d.id = h.device_id and d.del_flag = '0'
+                     inner join station_scope scope on scope.tenant_id = h.tenant_id and scope.station_id = h.station_id
+            where h.bucket_time &gt;= curdate()
+              and h.bucket_time &lt; date_add(curdate(), interval 1 day)
+              and h.quality = 'GOOD'
+              and (
+                    h.metric_key in ('generation', 'generationKwh', 'generation_kwh')
+                    or (h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                        and (h.source_role in ('PRODUCTION_METER', 'INVERTER') or d.device_type = 'INVERTER'))
+                  )
+        ), today_source_generation as (
+            select tenant_id,
+                   station_id,
+                   bucket_time,
+                   source_component_key,
+                   source_rank,
+                   max(generation_kwh) as generation_kwh
+            from raw_today_generation
+            group by tenant_id, station_id, bucket_time, source_component_key, source_rank
+        ), preferred_today_source as (
+            select tenant_id,
+                   station_id,
+                   bucket_time,
+                   min(source_rank) as source_rank
+            from today_source_generation
+            group by tenant_id, station_id, bucket_time
+        ), today_generation as (
+            select g.tenant_id,
+                   g.station_id,
+                   sum(g.generation_kwh) as generation_kwh
+            from today_source_generation g
+                     inner join preferred_today_source p on p.tenant_id = g.tenant_id
+                          and p.station_id = g.station_id
+                          and p.bucket_time = g.bucket_time
+                          and p.source_rank = g.source_rank
+            group by g.tenant_id, g.station_id
+        ), daily_report as (
+            select r.tenant_id,
+                   date_format(r.stat_time, '%Y-%m-%d') as stat_date,
+                   sum(ifnull(r.generation_kwh, 0)) as generation_kwh,
+                   sum(ifnull(r.revenue_amount, 0)) as revenue_amount
+            from ems_report_station_day r
+                     inner join station_scope scope on scope.tenant_id = r.tenant_id and scope.station_id = r.station_id
+            where r.stat_time &gt;= date_sub(curdate(), interval 29 day)
+              and r.stat_time &lt; curdate()
+            group by r.tenant_id, date_format(r.stat_time, '%Y-%m-%d')
+        ), today_revenue as (
+            select r.tenant_id,
+                   sum(ifnull(r.revenue_amount, 0)) as revenue_amount
+            from ems_report_station_hour r
+                     inner join station_scope scope on scope.tenant_id = r.tenant_id and scope.station_id = r.station_id
+            where r.stat_time &gt;= curdate()
+              and r.stat_time &lt; date_add(curdate(), interval 1 day)
+            group by r.tenant_id
+        ), today_report as (
+            select scope.tenant_id,
+                   date_format(curdate(), '%Y-%m-%d') as stat_date,
+                   ifnull(sum(today.generation_kwh), 0) as generation_kwh,
+                   ifnull(max(revenue.revenue_amount), 0) as revenue_amount
+            from station_scope scope
+                     left join today_generation today on today.tenant_id = scope.tenant_id and today.station_id = scope.station_id
+                     left join today_revenue revenue on revenue.tenant_id = scope.tenant_id
+            group by scope.tenant_id
+        )
+        select stat_date as statDate,
+               sum(generation_kwh) as generationKwh,
+               sum(revenue_amount) as revenueAmount
+        from (
+            select tenant_id, stat_date, generation_kwh, revenue_amount from daily_report
+            union all
+            select tenant_id, stat_date, generation_kwh, revenue_amount from today_report
+        ) trend
+        group by stat_date
+        order by statDate asc
+    </select>
+
+    <select id="selectStationTodayReportSummary" resultType="java.util.LinkedHashMap">
+        with station_scope as (
+            select s.tenant_id,
+                   s.id as station_id
+            from ems_station s
+            where s.del_flag = '0'
+              and s.id in
+            <foreach collection="stationIds" item="stationId" open="(" separator="," close=")">
+                #{stationId}
+            </foreach>
+        ), raw_metrics as (
+            select h.tenant_id,
+                   h.company_id,
+                   h.station_id,
+                   h.bucket_time,
+                   concat(ifnull(nullif(h.edge_id, ''), concat('device:', h.device_id)), '/',
+                          ifnull(nullif(h.component_id, ''), concat('device:', h.device_id))) as source_component_key,
+                   case
+                       when h.metric_key in ('generation', 'generationKwh', 'generation_kwh') then 'GENERATION'
+                       when h.metric_key in ('gridImport', 'gridImportKwh', 'grid_import_kwh', 'importEnergyKwh') then 'GRID_IMPORT'
+                       when h.metric_key in ('gridExport', 'gridExportKwh', 'grid_export_kwh', 'exportEnergyKwh') then 'GRID_EXPORT'
+                       when h.metric_key in ('consumption', 'consumptionKwh', 'consumption_kwh', 'loadEnergyKwh') then 'CONSUMPTION'
+                       when h.metric_key in ('charge', 'chargeKwh', 'charge_kwh', 'chargeEnergyKwh')
+                            and ifnull(h.metric_value, 0) &lt;&gt; 0 then 'CHARGE'
+                       when h.metric_key in ('discharge', 'dischargeKwh', 'discharge_kwh', 'dischargeEnergyKwh')
+                            and ifnull(h.metric_value, 0) &lt;&gt; 0 then 'DISCHARGE'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role = 'GRID_METER' or (d.device_type = 'METER' and h.component_id in ('meter0', 'grid0')))
+                            and ifnull(h.metric_value, 0) &gt; 0
+                            and not exists (
+                                select 1
+                                from ems_metric_history_5min e
+                                where e.tenant_id = h.tenant_id
+                                  and e.device_id = h.device_id
+                                  and e.bucket_time = h.bucket_time
+                                  and e.quality = 'GOOD'
+                                  and e.metric_key in ('gridImport', 'gridImportKwh', 'grid_import_kwh', 'importEnergyKwh')
+                                  and ifnull(e.metric_value, 0) &lt;&gt; 0
+                            ) then 'GRID_IMPORT'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role = 'GRID_METER' or (d.device_type = 'METER' and h.component_id in ('meter0', 'grid0')))
+                            and ifnull(h.metric_value, 0) &lt; 0
+                            and not exists (
+                                select 1
+                                from ems_metric_history_5min e
+                                where e.tenant_id = h.tenant_id
+                                  and e.device_id = h.device_id
+                                  and e.bucket_time = h.bucket_time
+                                  and e.quality = 'GOOD'
+                                  and e.metric_key in ('gridExport', 'gridExportKwh', 'grid_export_kwh', 'exportEnergyKwh')
+                                  and ifnull(e.metric_value, 0) &lt;&gt; 0
+                            ) then 'GRID_EXPORT'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role in ('PRODUCTION_METER', 'INVERTER') or d.device_type = 'INVERTER') then 'GENERATION'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and h.source_role = 'CONSUMPTION_METER' then 'CONSUMPTION'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS'))
+                            and ifnull(h.metric_value, 0) &lt; 0 then 'CHARGE'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS'))
+                            and ifnull(h.metric_value, 0) &gt; 0 then 'DISCHARGE'
+                       when h.metric_key in ('chargePower', 'chargePowerKw', 'charge_power_kw') then 'CHARGE'
+                       when h.metric_key in ('dischargePower', 'dischargePowerKw', 'discharge_power_kw') then 'DISCHARGE'
+                       else null
+                   end as metric_group,
+                   case
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS'))
+                           then abs(ifnull(h.metric_value, 0)) / 12
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power',
+                                             'chargePower', 'chargePowerKw', 'charge_power_kw',
+                                             'dischargePower', 'dischargePowerKw', 'discharge_power_kw')
+                           then abs(ifnull(h.metric_value, 0)) / 12
+                       else ifnull(h.metric_value, 0)
+                   end as metric_value,
+                   case
+                       when h.source_priority is not null then h.source_priority
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS')) then 30
+                       when h.source_role in ('PRODUCTION_METER', 'GRID_METER', 'PCS') then 10
+                       when h.source_role in ('INVERTER', 'ESS') then 20
+                       when h.source_role = 'SUM' then 30
+                       when d.device_type in ('METER', 'PCS') then 10
+                       when d.device_type in ('INVERTER', 'ESS') then 20
+                       else 100
+                   end as source_rank,
+                   h.quality
+            from ems_metric_history_5min h
+                     inner join ems_device d on d.id = h.device_id and d.del_flag = '0'
+                     inner join station_scope scope on scope.tenant_id = h.tenant_id and scope.station_id = h.station_id
+            where h.bucket_time &gt;= curdate()
+              and h.bucket_time &lt; date_add(curdate(), interval 1 day)
+        ), source_metrics as (
+            select tenant_id,
+                   company_id,
+                   station_id,
+                   bucket_time,
+                   source_component_key,
+                   metric_group,
+                   source_rank,
+                   max(case when quality = 'GOOD' then metric_value else null end) as metric_value,
+                   case
+                       when sum(case when quality = 'BAD' then 1 else 0 end) > 0 then 'BAD'
+                       when sum(case when quality = 'MISSING' then 1 else 0 end) > 0 then 'MISSING'
+                       when sum(case when quality = 'PARTIAL' then 1 else 0 end) > 0 then 'PARTIAL'
+                       else 'GOOD'
+                   end as data_quality,
+                   count(1) as source_count
+            from raw_metrics
+            where metric_group is not null
+            group by tenant_id, company_id, station_id, bucket_time, source_component_key, metric_group, source_rank
+        ), preferred_source_rank as (
+            select tenant_id,
+                   station_id,
+                   bucket_time,
+                   case
+                       when metric_group = 'GENERATION' then '__station_generation__'
+                       else source_component_key
+                   end as source_dedupe_key,
+                   metric_group,
+                   min(source_rank) as source_rank
+            from source_metrics
+            group by tenant_id,
+                     station_id,
+                     bucket_time,
+                     case
+                         when metric_group = 'GENERATION' then '__station_generation__'
+                         else source_component_key
+                     end,
+                     metric_group
+        ), preferred_metrics as (
+            select m.*
+            from source_metrics m
+                     inner join preferred_source_rank p on p.tenant_id = m.tenant_id
+                         and p.station_id = m.station_id
+                         and p.bucket_time = m.bucket_time
+                         and p.metric_group = m.metric_group
+                         and p.source_dedupe_key = case
+                             when m.metric_group = 'GENERATION' then '__station_generation__'
+                             else m.source_component_key
+                         end
+                         and p.source_rank = m.source_rank
+        )
+        select station_id as stationId,
+               max(company_id) as companyId,
+               sum(case when metric_group = 'GENERATION' then ifnull(metric_value, 0) else 0 end) as generationKwh,
+               sum(case when metric_group = 'CHARGE' then ifnull(metric_value, 0) else 0 end) as chargeKwh,
+               sum(case when metric_group = 'DISCHARGE' then ifnull(metric_value, 0) else 0 end) as dischargeKwh,
+               sum(case when metric_group = 'CONSUMPTION' then ifnull(metric_value, 0) else 0 end) as consumptionKwh,
+               sum(case when metric_group = 'GRID_IMPORT' then ifnull(metric_value, 0) else 0 end) as gridImportKwh,
+               sum(case when metric_group = 'GRID_EXPORT' then ifnull(metric_value, 0) else 0 end) as gridExportKwh,
+               case
+                   when sum(case when data_quality = 'BAD' then 1 else 0 end) > 0 then 'BAD'
+                   when sum(case when data_quality = 'MISSING' then 1 else 0 end) > 0 then 'MISSING'
+                   when sum(case when data_quality = 'PARTIAL' then 1 else 0 end) > 0 then 'PARTIAL'
+                   else 'GOOD'
+               end as dataQuality,
+               concat('按来源优先级实时累计自', sum(source_count), '条5分钟指标记录') as qualityReason
+        from preferred_metrics
+        group by tenant_id, station_id
+    </select>
+
+    <select id="selectDeviceTodayReportSummary" resultType="java.util.LinkedHashMap">
+        with raw_metrics as (
+            select h.tenant_id,
+                   h.company_id,
+                   h.station_id,
+                   h.device_id,
+                   d.device_type,
+                   h.bucket_time,
+                   concat(ifnull(nullif(h.edge_id, ''), concat('device:', h.device_id)), '/',
+                          ifnull(nullif(h.component_id, ''), concat('device:', h.device_id))) as source_component_key,
+                   case
+                       when h.metric_key in ('generation', 'generationKwh', 'generation_kwh') then 'GENERATION'
+                       when h.metric_key in ('charge', 'chargeKwh', 'charge_kwh', 'chargeEnergyKwh')
+                            and ifnull(h.metric_value, 0) &lt;&gt; 0 then 'CHARGE'
+                       when h.metric_key in ('discharge', 'dischargeKwh', 'discharge_kwh', 'dischargeEnergyKwh')
+                            and ifnull(h.metric_value, 0) &lt;&gt; 0 then 'DISCHARGE'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role in ('PRODUCTION_METER', 'INVERTER') or d.device_type = 'INVERTER') then 'GENERATION'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS'))
+                            and ifnull(h.metric_value, 0) &lt; 0 then 'CHARGE'
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS'))
+                            and ifnull(h.metric_value, 0) &gt; 0 then 'DISCHARGE'
+                       when h.metric_key in ('chargePower', 'chargePowerKw', 'charge_power_kw') then 'CHARGE'
+                       when h.metric_key in ('dischargePower', 'dischargePowerKw', 'discharge_power_kw') then 'DISCHARGE'
+                       else null
+                   end as metric_group,
+                   case
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS'))
+                           then abs(ifnull(h.metric_value, 0)) / 12
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power',
+                                             'chargePower', 'chargePowerKw', 'charge_power_kw',
+                                             'dischargePower', 'dischargePowerKw', 'discharge_power_kw')
+                           then abs(ifnull(h.metric_value, 0)) / 12
+                       else ifnull(h.metric_value, 0)
+                   end as metric_value,
+                   case
+                       when h.source_priority is not null then h.source_priority
+                       when h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                            and (h.source_role in ('ESS', 'PCS') or d.device_type in ('ESS', 'STORAGE', 'PCS')) then 30
+                       when h.source_role in ('PRODUCTION_METER', 'GRID_METER', 'PCS') then 10
+                       when h.source_role in ('INVERTER', 'ESS') then 20
+                       when h.source_role = 'SUM' then 30
+                       when d.device_type in ('METER', 'PCS') then 10
+                       when d.device_type in ('INVERTER', 'ESS') then 20
+                       else 100
+                   end as source_rank,
+                   case when h.quality = 'GOOD'
+                       and h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power') then ifnull(h.metric_value, 0) else null end as active_power_kw,
+                   case when h.quality = 'GOOD' and h.metric_key in ('soc', 'avgSoc') then h.metric_value else null end as soc,
+                   case when h.quality = 'GOOD' and h.metric_key in ('soh', 'avgSoh') then h.metric_value else null end as soh,
+                   case
+                       when h.quality = 'GOOD'
+                           and h.metric_key in ('runtime', 'runtimeHours', 'runtime_hours') then ifnull(h.metric_value, 0)
+                       when h.quality = 'GOOD'
+                           and h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+                           and (h.source_role in ('PRODUCTION_METER', 'INVERTER') or d.device_type = 'INVERTER')
+                           and ifnull(h.metric_value, 0) &gt; 0.01
+                           and not exists (
+                               select 1
+                               from ems_metric_history_5min e
+                               where e.tenant_id = h.tenant_id
+                                 and e.device_id = h.device_id
+                                 and e.bucket_time = h.bucket_time
+                                 and e.quality = 'GOOD'
+                                 and e.metric_key in ('runtime', 'runtimeHours', 'runtime_hours')
+                                 and ifnull(e.metric_value, 0) &lt;&gt; 0
+                           ) then 1 / 12
+                       else 0
+                   end as runtime_hours,
+                   case when h.quality = 'GOOD' and h.metric_key in ('alarmCount', 'alarm_count', 'alarm') then ifnull(h.metric_value, 0) else 0 end as alarm_count,
+                   h.quality
+            from ems_metric_history_5min h
+                     inner join ems_device d on d.id = h.device_id and d.del_flag = '0'
+            where h.device_id in
+            <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
+                #{deviceId}
+            </foreach>
+              and h.bucket_time &gt;= curdate()
+              and h.bucket_time &lt; date_add(curdate(), interval 1 day)
+        ), source_metrics as (
+            select tenant_id,
+                   company_id,
+                   station_id,
+                   device_id,
+                   device_type,
+                   bucket_time,
+                   source_component_key,
+                   metric_group,
+                   source_rank,
+                   max(case when quality = 'GOOD' then metric_value else null end) as metric_value,
+                   max(active_power_kw) as active_power_kw,
+                   avg(soc) as soc,
+                   avg(soh) as soh,
+                   sum(runtime_hours) as runtime_hours,
+                   sum(alarm_count) as alarm_count,
+                   case
+                       when sum(case when quality = 'BAD' then 1 else 0 end) > 0 then 'BAD'
+                       when sum(case when quality = 'MISSING' then 1 else 0 end) > 0 then 'MISSING'
+                       when sum(case when quality = 'PARTIAL' then 1 else 0 end) > 0 then 'PARTIAL'
+                       else 'GOOD'
+                   end as data_quality,
+                   count(1) as source_count
+            from raw_metrics
+            group by tenant_id, company_id, station_id, device_id, device_type, bucket_time, source_component_key, metric_group, source_rank
+        ), preferred_source_rank as (
+            select tenant_id,
+                   device_id,
+                   bucket_time,
+                   metric_group,
+                   min(source_rank) as source_rank
+            from source_metrics
+            where metric_group is not null
+            group by tenant_id, device_id, bucket_time, metric_group
+        ), preferred_metrics as (
+            select m.*
+            from source_metrics m
+                     inner join preferred_source_rank p on p.tenant_id = m.tenant_id
+                         and p.device_id = m.device_id
+                         and p.bucket_time = m.bucket_time
+                         and p.metric_group = m.metric_group
+                         and p.source_rank = m.source_rank
+        )
+        select raw.device_id as deviceId,
+               max(raw.company_id) as companyId,
+               max(raw.station_id) as stationId,
+               max(raw.device_type) as deviceType,
+               ifnull(sum(case when preferred.metric_group = 'GENERATION' then ifnull(preferred.metric_value, 0) else 0 end), 0) as generationKwh,
+               ifnull(sum(case when preferred.metric_group = 'CHARGE' then ifnull(preferred.metric_value, 0) else 0 end), 0) as chargeKwh,
+               ifnull(sum(case when preferred.metric_group = 'DISCHARGE' then ifnull(preferred.metric_value, 0) else 0 end), 0) as dischargeKwh,
+               ifnull(sum(raw.runtime_hours), 0) as runtimeHours,
+               ifnull(max(raw.active_power_kw), 0) as peakPowerKw,
+               avg(raw.soc) as avgSoc,
+               avg(raw.soh) as avgSoh,
+               ifnull(sum(raw.alarm_count), 0) as alarmCount,
+               case
+                   when sum(case when raw.data_quality = 'BAD' then 1 else 0 end) > 0 then 'BAD'
+                   when sum(case when raw.data_quality = 'MISSING' then 1 else 0 end) > 0 then 'MISSING'
+                   when sum(case when raw.data_quality = 'PARTIAL' then 1 else 0 end) > 0 then 'PARTIAL'
+                   else 'GOOD'
+               end as dataQuality,
+               concat('按来源优先级实时累计自', sum(raw.source_count), '条5分钟指标记录') as qualityReason
+        from source_metrics raw
+                 left join preferred_metrics preferred on preferred.tenant_id = raw.tenant_id
+                     and preferred.device_id = raw.device_id
+                     and preferred.bucket_time = raw.bucket_time
+                     and preferred.source_component_key = raw.source_component_key
+                     and preferred.metric_group = raw.metric_group
+                     and preferred.source_rank = raw.source_rank
+        group by raw.tenant_id, raw.device_id
+    </select>
+
+    <select id="selectStationRealtimeTrend" resultType="java.util.LinkedHashMap">
+        with raw_power as (
+            select h.tenant_id,
+                   h.station_id,
+                   h.bucket_time,
+                   concat(ifnull(nullif(h.edge_id, ''), concat('device:', h.device_id)), '/',
+                          ifnull(nullif(h.component_id, ''), concat('device:', h.device_id))) as source_component_key,
+                   case
+                       when h.source_priority is not null then h.source_priority
+                       when h.source_role = 'PRODUCTION_METER' then 10
+                       when h.source_role = 'INVERTER' then 20
+                       when d.device_type = 'INVERTER' then 20
+                       else 100
+                   end as source_rank,
+                   ifnull(h.metric_value, 0) as active_power_kw
+            from ems_metric_history_5min h
+                     inner join ems_device d on d.id = h.device_id and d.del_flag = '0'
+            where h.bucket_time &gt;= date_sub(now(), interval 24 hour)
+              and h.quality = 'GOOD'
+              and h.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+              and (h.source_role in ('PRODUCTION_METER', 'INVERTER') or d.device_type = 'INVERTER')
+              and h.station_id in
+            <foreach collection="stationIds" item="stationId" open="(" separator="," close=")">
+                #{stationId}
+            </foreach>
+        ), preferred_source as (
+            select tenant_id, station_id, bucket_time, min(source_rank) as source_rank
+            from raw_power
+            group by tenant_id, station_id, bucket_time
+        ), preferred_power as (
+            select p.tenant_id,
+                   p.station_id,
+                   p.bucket_time,
+                   max(p.active_power_kw) as active_power_kw
+            from raw_power p
+                      inner join preferred_source s on s.station_id = p.station_id
+                          and s.tenant_id = p.tenant_id
+                          and s.bucket_time = p.bucket_time
+                          and s.source_rank = p.source_rank
+            group by p.tenant_id, p.station_id, p.bucket_time, p.source_component_key
+        )
+        select date_format(bucket_time, '%m-%d %H:%i') as bucketLabel,
+               ifnull(sum(active_power_kw), 0) as activePowerKw,
+               ifnull(sum(active_power_kw / 12), 0) as generationKwh
+        from preferred_power
+        group by bucket_time
+        order by bucket_time asc
+    </select>
+
+    <select id="selectLatestSampleTimes" resultType="java.util.LinkedHashMap">
+        select station_id as stationId,
+               max(sample_time) as sampleTime
+        from ems_metric_snapshot
+        where station_id in
+        <foreach collection="stationIds" item="stationId" open="(" separator="," close=")">
+            #{stationId}
+        </foreach>
+        group by station_id
+    </select>
+
+    <select id="selectStationSyncStatus" resultType="java.util.LinkedHashMap">
+        with binding_scope as (
+            select id, tenant_id, station_id, device_id, last_sample_time
+            from ems_device_component
+            where bind_status = 'ACTIVE'
+              and enabled = '0'
+              and del_flag = '0'
+              and station_id in
+            <foreach collection="stationIds" item="stationId" open="(" separator="," close=")">
+                #{stationId}
+            </foreach>
+        ),
+        component_sample as (
+            select b.id as component_id,
+                   b.tenant_id,
+                   b.station_id,
+                   nullif(greatest(ifnull(b.last_sample_time, cast('1970-01-01 00:00:00' as datetime)),
+                                   ifnull(max(ms.sample_time), cast('1970-01-01 00:00:00' as datetime))),
+                          cast('1970-01-01 00:00:00' as datetime)) as sample_time
+            from binding_scope b
+                     left join ems_metric_snapshot ms on ms.tenant_id = b.tenant_id
+                         and ms.station_id = b.station_id
+                         and ms.device_id = b.device_id
+            group by b.id, b.tenant_id, b.station_id, b.last_sample_time
+        ),
+        component_cursor as (
+            select b.id as component_id,
+                   b.tenant_id,
+                   b.station_id,
+                   cur.status,
+                   cur.last_attempt_time,
+                   cur.error_message
+            from binding_scope b
+                     left join ems_metric_sync_cursor cur on cur.tenant_id = b.tenant_id
+                         and cur.device_component_id = b.id
+        ),
+        latest_log_time as (
+            select tenant_id,
+                   station_id,
+                   max(coalesce(finished_at, started_at, create_time)) as log_time
+            from ems_sync_log
+            where sync_type in ('OPENEMS_REALTIME', 'OPENEMS_HISTORY_5MIN')
+              and station_id in
+            <foreach collection="stationIds" item="stationId" open="(" separator="," close=")">
+                #{stationId}
+            </foreach>
+            group by tenant_id, station_id
+        ),
+        latest_log as (
+            select sl.tenant_id,
+                   sl.station_id,
+                   max(sl.status) as status,
+                   lt.log_time,
+                   group_concat(distinct nullif(sl.error_message, '') order by sl.error_message separator ';') as error_message
+            from latest_log_time lt
+                     inner join ems_sync_log sl on sl.tenant_id = lt.tenant_id
+                         and sl.station_id = lt.station_id
+                         and coalesce(sl.finished_at, sl.started_at, sl.create_time) = lt.log_time
+            group by sl.tenant_id, sl.station_id, lt.log_time
+        ),
+        station_rollup as (
+            select b.tenant_id,
+                   b.station_id,
+                   max(cs.sample_time) as latestSampleTime,
+                   max(cc.last_attempt_time) as lastCursorAttemptTime,
+                   sum(case when cs.sample_time is null then 1 else 0 end) as missingComponentCount,
+                   sum(case
+                           when cc.status = 'FAILED'
+                                and (cs.sample_time is null or cc.last_attempt_time is null or cc.last_attempt_time &gt;= cs.sample_time)
+                               then 1
+                           else 0
+                       end) as failedComponentCount,
+                   group_concat(distinct nullif(case
+                           when cc.status = 'FAILED'
+                                and (cs.sample_time is null or cc.last_attempt_time is null or cc.last_attempt_time &gt;= cs.sample_time)
+                               then cc.error_message
+                           else null
+                       end, '') order by cc.error_message separator ';') as cursorMessage
+            from binding_scope b
+                     left join component_sample cs on cs.component_id = b.id
+                     left join component_cursor cc on cc.component_id = b.id
+            group by b.tenant_id, b.station_id
+        )
+        select sr.station_id as stationId,
+               sr.latestSampleTime,
+               nullif(greatest(ifnull(sr.lastCursorAttemptTime, cast('1970-01-01 00:00:00' as datetime)),
+                               ifnull(ll.log_time, cast('1970-01-01 00:00:00' as datetime))),
+                      cast('1970-01-01 00:00:00' as datetime)) as lastAttemptTime,
+               case
+                   when sr.latestSampleTime is null then 'MISSING'
+                   when ifnull(sr.failedComponentCount, 0) &gt; 0
+                        or (ll.status = 'FAILED' and ll.log_time &gt;= sr.latestSampleTime) then 'FAILED'
+                   when ifnull(sr.missingComponentCount, 0) &gt; 0 then 'PARTIAL'
+                   else 'OK'
+               end as syncStatus,
+               case
+                   when ifnull(sr.failedComponentCount, 0) &gt; 0
+                        or (ll.status = 'FAILED' and ll.log_time &gt;= sr.latestSampleTime)
+                       then concat_ws(';', nullif(sr.cursorMessage, ''),
+                                      nullif(case when ll.status = 'FAILED' and ll.log_time &gt;= sr.latestSampleTime then ll.error_message else null end, ''))
+                   when sr.latestSampleTime is null then '未发现OpenEMS有效采样记录'
+                   when ifnull(sr.missingComponentCount, 0) &gt; 0 then concat(sr.missingComponentCount, '个OpenEMS绑定尚无实时采样')
+                   else ''
+               end as syncMessage
+        from station_rollup sr
+                 left join latest_log ll on ll.tenant_id = sr.tenant_id and ll.station_id = sr.station_id
+    </select>
+
+    <select id="selectActiveAlarmCountByDeviceIds" resultType="java.util.LinkedHashMap">
+        select device_id as deviceId,
+               count(1) as alarmCount
+        from ems_alarm_event
+        where alarm_status = 'ACTIVE'
+          and device_id in
+        <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
+            #{deviceId}
+        </foreach>
+        group by device_id
+    </select>
+
+    <select id="selectDeviceSnapshotQualityByDeviceIds" resultType="java.util.LinkedHashMap">
+        select device_id as deviceId,
+               max(sample_time) as sampleTime,
+               case
+                   when sum(case when quality = 'BAD' then 1 else 0 end) > 0 then 'BAD'
+                   when sum(case when quality = 'MISSING' then 1 else 0 end) > 0 then 'MISSING'
+                   when sum(case when quality = 'STALE' then 1 else 0 end) > 0 then 'STALE'
+                   when sum(case when quality = 'PARTIAL' then 1 else 0 end) > 0 then 'PARTIAL'
+                   else 'GOOD'
+               end as realtimeQuality,
+               group_concat(distinct quality_reason order by quality_reason separator ';') as realtimeQualityReason
+        from ems_metric_snapshot
+        where device_id in
+        <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
+            #{deviceId}
+        </foreach>
+        group by device_id
+    </select>
+
+    <select id="selectDeviceHierarchyRows" resultType="java.util.LinkedHashMap">
+        select device_id as deviceId,
+               nullif(parent_device_id, 0) as parentDeviceId,
+               device_component_id as deviceComponentId,
+               parent_device_component_id as parentDeviceComponentId,
+               level_no as levelNo,
+               path
+        from ems_device_hierarchy
+        where station_id = #{stationId}
+          and enabled = '0'
+          and del_flag = '0'
+        order by level_no asc, id asc
+    </select>
+
+    <select id="selectDeviceMetricTrend" resultType="java.util.LinkedHashMap">
+        select date_format(bucket_time, '%m-%d %H:%i') as bucketLabel,
+               metric_key as metricKey,
+               avg(metric_value) as metricValue
+        from ems_metric_history_5min
+        where device_id = #{deviceId}
+          and bucket_time &gt;= date_sub(now(), interval 24 hour)
+          and quality = 'GOOD'
+          and metric_key in
+        <foreach collection="metricKeys" item="metricKey" open="(" separator="," close=")">
+            #{metricKey}
+        </foreach>
+        group by date_format(bucket_time, '%m-%d %H:%i'), metric_key
+        order by min(bucket_time) asc
+    </select>
+
+    <select id="selectDeviceMetricHistory" resultType="java.util.LinkedHashMap">
+        select date_format(h.bucket_time, '%Y-%m-%d %H:%i:%s') as time,
+               h.bucket_time as sampleTime,
+               h.company_id as companyId,
+               h.station_id as stationId,
+               s.station_name as stationName,
+               h.device_id as deviceId,
+               d.device_name as deviceName,
+               h.metric_key as metricKey,
+               h.metric_value as metricValue,
+               h.metric_value as value,
+               h.metric_text as metricText,
+               h.unit,
+               h.quality,
+               h.quality as dataQuality,
+               h.quality_reason as qualityReason,
+               h.source_role as sourceRole,
+               h.source_priority as sourcePriority,
+               h.edge_id as edgeId,
+               h.component_id as componentId,
+               h.source_sample_time as sourceSampleTime
+        from ems_metric_history_5min h
+                 inner join ems_device d on d.id = h.device_id and d.del_flag = '0'
+                 left join ems_station s on s.id = h.station_id and s.del_flag = '0'
+        where h.bucket_time &gt;= #{startTime}
+          and h.bucket_time &lt;= #{endTime}
+          and h.device_id in
+        <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
+            #{deviceId}
+        </foreach>
+        <if test="metricKey != null and metricKey != ''">
+          and h.metric_key = #{metricKey}
+        </if>
+        order by h.bucket_time asc, h.device_id asc, h.metric_key asc
+        limit 10000
+    </select>
+
+    <select id="selectDeviceStoragePowerTrend" resultType="java.util.LinkedHashMap">
+        select date_format(bucket_time, '%m-%d %H:%i') as bucketLabel,
+               avg(case when ifnull(metric_value, 0) &lt; 0 then abs(metric_value) else 0 end) as chargePowerKw,
+               avg(case when ifnull(metric_value, 0) &gt; 0 then metric_value else 0 end) as dischargePowerKw
+        from ems_metric_history_5min
+        where device_id = #{deviceId}
+          and bucket_time &gt;= date_sub(now(), interval 24 hour)
+          and quality = 'GOOD'
+          and metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
+        group by date_format(bucket_time, '%m-%d %H:%i')
+        order by min(bucket_time) asc
+    </select>
+
+    <select id="selectDeviceMetricValue" resultType="java.math.BigDecimal">
+        select metric_value
+        from ems_metric_snapshot
+        where device_id = #{deviceId}
+          and metric_key = #{metricKey}
+        limit 1
+    </select>
+
+</mapper>

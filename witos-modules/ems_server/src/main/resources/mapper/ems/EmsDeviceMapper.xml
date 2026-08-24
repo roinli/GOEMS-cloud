@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.witos.ems.server.mapper.EmsDeviceMapper">
+
+    <sql id="deviceSelect">
+        select d.id as deviceId,
+               d.tenant_id as tenantId,
+               d.company_id as companyId,
+               c.company_name as companyName,
+               d.station_id as stationId,
+               s.station_name as stationName,
+               d.controller_id as controllerId,
+               ctl.device_name as controllerName,
+               d.device_code as deviceCode,
+               d.device_name as deviceName,
+               d.device_type as deviceType,
+               d.rated_capacity as ratedCapacity,
+               d.model,
+               d.serial_no as serialNo,
+               d.manufacturer,
+               d.firmware_version as firmwareVersion,
+               d.last_heartbeat_time as lastHeartbeatTime,
+               d.controller_version as controllerVersion,
+               d.install_date as installDate,
+               d.comm_status as commStatus,
+               d.status,
+               dc.server_endpoint_id as serverEndpointId,
+               dc.edge_id as edgeId,
+               dc.component_id as componentId,
+               dc.component_type as componentType,
+               dc.component_alias as componentAlias,
+               dc.serial_no as bindSerialNo,
+               dc.parent_edge_id as parentEdgeId,
+               dc.parent_component_id as parentComponentId,
+               dc.bind_time as bindTime,
+               dc.unbind_time as unbindTime,
+               dc.bind_status as bindStatus,
+               dc.bind_source as bindSource,
+               dc.last_sample_time as lastSampleTime,
+               case
+                   when dc.component_id is null or dc.component_id = '' then null
+                   else concat(ifnull(dc.component_alias, ''), '(', dc.component_id, ')')
+                   end as componentBinding,
+               d.create_time as createTime,
+               d.update_time as updateTime,
+               d.remark
+        from ems_device d
+                 left join ems_company c on c.id = d.company_id and c.del_flag = '0'
+                 left join ems_station s on s.id = d.station_id and s.del_flag = '0'
+                 left join ems_device ctl on ctl.id = d.controller_id and ctl.del_flag = '0'
+                 left join ems_device_component dc on dc.device_id = d.id and dc.del_flag = '0' and dc.bind_status = 'ACTIVE'
+        where d.del_flag = '0'
+    </sql>
+
+    <sql id="deviceScope">
+        <if test="scope != null and scope.scopeRestricted">
+            <choose>
+                <when test="(scope.companyIds != null and scope.companyIds.size() > 0) or (scope.stationIds != null and scope.stationIds.size() > 0)">
+                    and (
+                    <if test="scope.companyIds != null and scope.companyIds.size() > 0">
+                        d.company_id in
+                        <foreach collection="scope.companyIds" item="companyId" open="(" separator="," close=")">
+                            #{companyId}
+                        </foreach>
+                    </if>
+                    <if test="scope.stationIds != null and scope.stationIds.size() > 0">
+                        <if test="scope.companyIds != null and scope.companyIds.size() > 0">
+                            or
+                        </if>
+                        d.station_id in
+                        <foreach collection="scope.stationIds" item="stationId" open="(" separator="," close=")">
+                            #{stationId}
+                        </foreach>
+                    </if>
+                    )
+                </when>
+                <otherwise>
+                    and 1 = 0
+                </otherwise>
+            </choose>
+        </if>
+    </sql>
+
+    <select id="selectDevicePage" resultType="java.util.LinkedHashMap">
+        <include refid="deviceSelect"/>
+        <include refid="deviceScope"/>
+        <include refid="deviceQuery"/>
+        order by d.id desc
+    </select>
+
+    <sql id="deviceQuery">
+        <if test="query.companyId != null and query.companyId != ''">
+            and d.company_id = #{query.companyId}
+        </if>
+        <if test="query.stationId != null and query.stationId != ''">
+            and d.station_id = #{query.stationId}
+        </if>
+        <if test="query.deviceName != null and query.deviceName != ''">
+            and d.device_name like concat('%', #{query.deviceName}, '%')
+        </if>
+        <if test="query.deviceCode != null and query.deviceCode != ''">
+            and d.device_code like concat('%', #{query.deviceCode}, '%')
+        </if>
+        <if test="query.componentId != null and query.componentId != ''">
+            and dc.component_id like concat('%', #{query.componentId}, '%')
+        </if>
+        <if test="query.serialNo != null and query.serialNo != ''">
+            and (d.serial_no like concat('%', #{query.serialNo}, '%') or dc.serial_no like concat('%', #{query.serialNo}, '%'))
+        </if>
+        <if test="query.bindStatus != null and query.bindStatus != ''">
+            and dc.bind_status = #{query.bindStatus}
+        </if>
+        <if test="query.deviceType != null and query.deviceType != ''">
+            and d.device_type = #{query.deviceType}
+        </if>
+        <if test="query.status != null and query.status != ''">
+            and d.status = #{query.status}
+        </if>
+    </sql>
+
+    <select id="selectDeviceList" resultType="java.util.LinkedHashMap">
+        <include refid="deviceSelect"/>
+        <include refid="deviceScope"/>
+        <include refid="deviceQuery"/>
+        order by d.id desc
+    </select>
+
+    <select id="selectDeviceDetail" resultType="java.util.LinkedHashMap">
+        <include refid="deviceSelect"/>
+        and d.id = #{id}
+        <include refid="deviceScope"/>
+        limit 1
+    </select>
+
+</mapper>

@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.witos.ems.server.mapper.EmsAlarmRuleMapper">
+
+    <sql id="ruleSelect">
+        select r.id,
+               r.tenant_id as tenantId,
+               r.company_id as companyId,
+               c.company_name as companyName,
+               r.station_id as stationId,
+               s.station_name as stationName,
+               r.rule_name as ruleName,
+               r.metric_key as metricKey,
+               r.device_type as deviceType,
+               r.condition_op as conditionOp,
+               r.threshold_value as thresholdValue,
+               r.duration_seconds as durationSeconds,
+               r.severity,
+               r.enabled,
+               r.notify_enabled as notifyEnabled,
+               r.notify_channels as notifyChannels,
+               r.notify_targets as notifyTargets,
+               r.create_time as createTime,
+               r.update_time as updateTime,
+               r.remark
+        from ems_alarm_rule r
+                 left join ems_company c on c.id = r.company_id and c.del_flag = '0'
+                 left join ems_station s on s.id = r.station_id and s.del_flag = '0'
+        where r.del_flag = '0'
+    </sql>
+
+    <sql id="ruleScope">
+        <if test="scope != null and scope.scopeRestricted">
+            <choose>
+                <when test="(scope.companyIds != null and scope.companyIds.size() > 0) or (scope.stationIds != null and scope.stationIds.size() > 0)">
+                    and (
+                    <if test="scope.companyIds != null and scope.companyIds.size() > 0">
+                        r.company_id in
+                        <foreach collection="scope.companyIds" item="companyId" open="(" separator="," close=")">
+                            #{companyId}
+                        </foreach>
+                    </if>
+                    <if test="scope.stationIds != null and scope.stationIds.size() > 0">
+                        <if test="scope.companyIds != null and scope.companyIds.size() > 0">
+                            or
+                        </if>
+                        r.station_id in
+                        <foreach collection="scope.stationIds" item="stationId" open="(" separator="," close=")">
+                            #{stationId}
+                        </foreach>
+                    </if>
+                    )
+                </when>
+                <otherwise>
+                    and 1 = 0
+                </otherwise>
+            </choose>
+        </if>
+    </sql>
+
+    <sql id="ruleQuery">
+        <if test="query.companyId != null and query.companyId != ''">
+            and r.company_id = #{query.companyId}
+        </if>
+        <if test="query.stationId != null and query.stationId != ''">
+            and r.station_id = #{query.stationId}
+        </if>
+        <if test="query.ruleName != null and query.ruleName != ''">
+            and r.rule_name like concat('%', #{query.ruleName}, '%')
+        </if>
+        <if test="query.deviceType != null and query.deviceType != ''">
+            and r.device_type = #{query.deviceType}
+        </if>
+        <if test="query.severity != null and query.severity != ''">
+            and r.severity = #{query.severity}
+        </if>
+        <if test="query.enabled != null and query.enabled != ''">
+            and r.enabled = #{query.enabled}
+        </if>
+    </sql>
+
+    <select id="selectAlarmRulePage" resultType="java.util.LinkedHashMap">
+        <include refid="ruleSelect"/>
+        <include refid="ruleScope"/>
+        <include refid="ruleQuery"/>
+        order by case when r.enabled = '1' then 0 else 1 end asc,
+                 coalesce(r.update_time, r.create_time) desc,
+                 r.id desc
+    </select>
+
+    <select id="selectAlarmRuleDetail" resultType="java.util.LinkedHashMap">
+        <include refid="ruleSelect"/>
+        and r.id = #{id}
+        <include refid="ruleScope"/>
+        limit 1
+    </select>
+
+    <select id="selectMatchedAlarmRules" resultType="com.witos.ems.server.domain.entity.EmsAlarmRule">
+        select *
+        from ems_alarm_rule r
+        where r.del_flag = '0'
+          and r.tenant_id = #{tenantId}
+          and r.enabled = '1'
+          and r.notify_enabled = '1'
+          and (r.company_id = 0 or r.company_id = #{companyId})
+          and (r.station_id = 0 or r.station_id = #{stationId})
+        <if test="deviceType != null and deviceType != ''">
+          and (r.device_type is null or r.device_type = '' or r.device_type = #{deviceType})
+        </if>
+        <if test="metricKey != null and metricKey != ''">
+          and r.metric_key = #{metricKey}
+        </if>
+        <if test="severity != null and severity != ''">
+          and (r.severity is null or r.severity = '' or r.severity = #{severity})
+        </if>
+        order by case when r.station_id > 0 then 0 else 1 end asc,
+                 case when r.company_id > 0 then 0 else 1 end asc,
+                 coalesce(r.update_time, r.create_time) desc,
+                 r.id desc
+    </select>
+
+</mapper>

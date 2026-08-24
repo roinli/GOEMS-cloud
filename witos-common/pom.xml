@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>com.witos</groupId>
+        <artifactId>witos</artifactId>
+        <version>1.2.2</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <modules>
+        <module>witos-common-log</module>
+        <module>witos-common-core</module>
+        <module>witos-common-redis</module>
+        <module>witos-common-seata</module>
+        <module>witos-common-swagger</module>
+        <module>witos-common-security</module>
+        <module>witos-common-datascope</module>
+		<module>witos-common-datasource</module>
+        <module>witos-common-mybatisplus</module>
+        <module>witos-common-message</module>
+    </modules>
+
+    <artifactId>ems-common</artifactId>
+    <packaging>pom</packaging>
+
+    <description>
+	    EMS通用模块
+    </description>
+
+</project>

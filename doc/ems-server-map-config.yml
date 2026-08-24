@@ -1,0 +1,5 @@
+map:
+  qq:
+    key: QUWBZ-DBKWC-NCI2J-A557E-LST3Q-77B6X
+    geocoderUrl: https://apis.map.qq.com/ws/geocoder/v1/?key=
+    suggestionUrl: https://apis.map.qq.com/ws/place/v1/suggestion?key=

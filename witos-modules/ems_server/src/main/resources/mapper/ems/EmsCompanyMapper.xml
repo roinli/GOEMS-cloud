@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.witos.ems.server.mapper.EmsCompanyMapper">
+
+    <sql id="companySelect">
+        select c.id as companyId,
+               c.tenant_id as tenantId,
+               t.tenant_name as tenantName,
+               c.parent_id as parentId,
+               p.company_name as parentName,
+               c.company_name as companyName,
+               c.company_desc as companyDesc,
+               c.country,
+               c.province,
+               c.city,
+               c.address,
+               c.longitude,
+               c.latitude,
+               c.website,
+               c.record_no as recordNo,
+               c.order_num as orderNum,
+               c.status,
+               c.create_time as createTime,
+               c.update_time as updateTime,
+               c.remark
+        from ems_company c
+                 left join ems_company p on p.id = c.parent_id and p.del_flag = '0'
+                 left join sys_tenant t on t.id = c.tenant_id
+        where c.del_flag = '0'
+    </sql>
+
+    <sql id="companyScope">
+        <if test="scope != null and scope.scopeRestricted">
+            <choose>
+                <when test="scope.companyIds != null and scope.companyIds.size() > 0">
+                    and c.id in
+                    <foreach collection="scope.companyIds" item="companyId" open="(" separator="," close=")">
+                        #{companyId}
+                    </foreach>
+                </when>
+                <otherwise>
+                    and 1 = 0
+                </otherwise>
+            </choose>
+        </if>
+    </sql>
+
+    <select id="selectCompanyPage" resultType="java.util.LinkedHashMap">
+        <include refid="companySelect"/>
+        <include refid="companyScope"/>
+        <include refid="companyQuery"/>
+        order by c.order_num asc, c.id desc
+    </select>
+
+    <sql id="companyQuery">
+        <if test="query.companyName != null and query.companyName != ''">
+            and c.company_name like concat('%', #{query.companyName}, '%')
+        </if>
+        <if test="query.companyDesc != null and query.companyDesc != ''">
+            and c.company_desc like concat('%', #{query.companyDesc}, '%')
+        </if>
+        <if test="query.status != null and query.status != ''">
+            and c.status = #{query.status}
+        </if>
+        <if test="query.parentId != null and query.parentId != ''">
+            and c.parent_id = #{query.parentId}
+        </if>
+    </sql>
+
+    <select id="selectCompanyList" resultType="java.util.LinkedHashMap">
+        <include refid="companySelect"/>
+        <include refid="companyScope"/>
+        <include refid="companyQuery"/>
+        order by c.order_num asc, c.id desc
+    </select>
+
+    <select id="selectCompanyDetail" resultType="java.util.LinkedHashMap">
+        <include refid="companySelect"/>
+        and c.id = #{id}
+        <include refid="companyScope"/>
+        limit 1
+    </select>
+
+</mapper>
