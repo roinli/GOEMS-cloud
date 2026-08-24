@@ -1,209 +1,167 @@
-## 官网问题已经修复,可以正常访问,后续如有问题请邮件联系
-## 删除了无用的菜单和容易报错的项目,后续会在2025年春节后继续更新
-## 平台简介
+# GOEMS 能源管理系统
 
-<h1 align="center" style="margin: 30px 0 30px; font-weight: bold;">witos-platform 多租户Saas快速开发平台</h1>
-<h4 align="center">基于Ruoyi-Cloud版本改造的的多租户SaaS开发框架。</h4>
+当前版本：3.0.8
+
+[🔥 GOEMS平台微服务源码](https://github.com/roinli/GOEMS-cloud)（当前）
+
+[🔥 GOEMS管理后台前端源码](https://github.com/roinli/GOEMS-admin)
+
+[🔥 更新日志](https://blog.csdn.net/Roinli?spm=1000.2115.3001.5343)
+
+> 基于 Spring Cloud Alibaba 的多租户能源管理云平台（EMS）
+
 <p align="center">
-    <a style="margin-right: 5px">
-       <img src="https://img.shields.io/badge/witos%20Platform-v1.2.2-brightgreen" alt="witos-platform">
-    </a>
-    <a style="margin-right: 5px" href="ttps://www.jetbrains.com/?from=RuoYi-Vue-Plus">
-       <img src="https://img.shields.io/badge/IntelliJ%20IDEA-提供支持-blue.svg" alt="IntelliJ-IDEA">
-    </a>
-    <a style="margin-right: 5px">
-           <img src="https://gitee.com/witos/witos-platform/badge/star.svg?theme=dark" alt="witos-platform">
-    </a>
-    <a style="margin-right: 5px">
-       <img src="https://gitee.com/witos/witos-platform/badge/fork.svg?theme=dark" alt="witos-platform">
-    </a>
-   <a style="margin-right: 5px">
-           <img src="https://img.shields.io/github/stars/witos/witos-platform?logo=github" alt="witos-platform">
-    </a>
-   <a style="margin-right: 5px">
-           <img src="https://img.shields.io/github/forks/witos/witos-platform?logo=github" alt="witos-platform">
-    </a>
-
+    <a href="https://ems-pc.huizhidata.com/login?redirect=%2Fems-home%2Flist">在线体验</a> | <a href="https://ems-doc.huizhidata.com/">帮助文档</a>
 </p>
 
-- 首先感谢若依提供的开源支持!请大家继续关注若依项目!
+<p align="center">
+    <img src="https://img.shields.io/badge/GOEMS-v1.2.2-brightgreen" alt="GOEMS">
+    <img src="https://img.shields.io/badge/license-MIT-blue" alt="license">
+    <img src="https://img.shields.io/badge/Java-1.8-orange" alt="Java">
+    <img src="https://img.shields.io/badge/Spring%20Boot-2.7.18-brightgreen" alt="SpringBoot">
+</p>
 
-- 本项目基于 [RuoYi-Cloud](https://gitee.com/y_project/RuoYi-Cloud) 进行二次开发的租户版本,主要致力于租户模式和服务治理相关的部分。
+GOEMS 是一款基于 MIT 协议发布的多租户能源管理系统（EMS）云端微服务开源方案。代码全开源无加密，可免费商用，适合储能、光伏等能源资产运营方与集成商，快速构建「企业 - 电站 - 设备」三级资产模型的能源管理云平台。
 
-- 本项目主要针对企业租户场景开发，脚手架功能同步更新  [RuoYi-Cloud](https://gitee.com/y_project/RuoYi-Cloud)  项目。
+---
 
-- 采用`MIT开源协议`，完全免费给个人及企业使用。
+## 📖 项目介绍
 
-#### 友情链接 [若依/RuoYi-Cloud](https://gitee.com/y_project/RuoYi-Cloud) Element UI版本。
-star 别忘点上 :kissing_heart:
-## 项目地址
-Gitee: https://gitee.com/witos/witos-platform
+系统采用 Java + Spring Cloud Alibaba 微服务架构，后端基于 RuoYi-Cloud 多租户版（witos-platform）二次开发，前后端分离设计清晰。通过 GOEMS 设备接入层对接边缘能源设备，实现设备接入、时序采集、远程管控、告警通知与经营分析的完整闭环；原生多租户隔离，可同时服务多个能源运营主体，数据独立、权限隔离。
 
-GitHub: https://github.com/witos/witos-platform
-## 演示地址
-PS:目前已经升级服务器,修改为阿里云3M的服务器,请大家请勿恶心访问刷新,如果官网出现问题请邮件联系我!
-- http://platform.witos.cn
-- 账号密码 admin/admin123
-- 目前演示地址权限全开,请勿随意删除相关数据,本人只做了初始化数据库备份,如果出现异常情况,会选择直接回滚初始版本
-## 文档地址
-- https://doc.witos.cn
-## 个人blog
-- https://www.witos.cn
-## 公众号-witos
-- witos 全新公众号
-## 有问题请issues有限提问,每天会定时处理!
+![首页列表视图（电站经营驾驶舱）](./doc/readme/ems-home.png)
+![电站报表](./doc/readme/ems-report.png)
+![告警管理](./doc/readme/ems-alarm.png)
+![设备管理](./doc/readme/ems-device.png)
+![数据大屏](./doc/readme/ems-screen.png)
 
-## 交流
-- 请移步右上角  **一键三连** :kissing_heart:
-- 邮箱:dhr92@163.com
-- Q群:628417588 (目前某500强企业搬砖,工作环境比较繁忙,上班期间可能无法回复相关问题)。
+### 核心功能
 
+#### 能源资产全链路管理
+平台核心管理功能完善，包含企业（树形层级）、电站、设备三级资产管理，设备档案与心跳监测、运行状态管理，覆盖能源资产运营全流程。
 
-## 主要添加模块
-- 1.添加了租户功能,包含自定义租户套餐,租户到期禁用登陆等功能
-- 2.替代mybatis为mybatis-plus模块
-- 3.添加了邮件通知功能
-- 4.添加了自定义监控模块,暂时代替monitor模块
-- 5.去除定时任务模块,选择了xxl-job,目前没有加入代码库
-- 6.优化代码生成模块-代码生成默认集成mybatis-plus的CRUD模块
-- 7.添加通知模块,和OSS存储模块,已经集成阿里云短信,后续会集成七牛云和腾讯等第三方
-- 8.集成xxl-job到系统,重构定时任务管理界面,账号权限通用
-- 9.优化文件服务
-- 10.单体运行模块
-## 后续开发任务
-- 1.继续同步RuoYi-Cloud相关版本性更新
-- 2.优化租户增删改查时候的数据处理逻辑,以及租户到期提前一星期通知功能(完成)
-- 3.完善租户模式下的数据权限问题(完成)
-- 4.集成阿里云,腾讯云等短信服务,并接入第三方登陆系统,增加短信登陆功能(已完成)
-- 5.集成七牛云等云存储
-- 6.租户添加自定义Logo和系统名称,后续考虑集成二级域名登陆租户系统
-- 7.监控功能添加数据库监控和表监控
-- 8.集成K8S环境
-- 9.集成链路追踪
-- 10.集成普罗米修斯
+#### 设备智能接入（GOEMS）
+支持服务端点接入、组件与能力建模、设备绑定与生命周期管理、时序数据同步、远程指令下发等设备联动能力，实现「接入即监控、下发即管控」的闭环体验。
 
-## 新增单体模块说明
-#### 单体模块是独立于整体项目的一个demo,它只是集成了部分witos common模块里的公共组件
-#### 设立此模块的初衷是因为部门公司场景下,快速开发平台需要提供为相应的二级部门使用,但是又不希望完全暴露平台代码
-#### 所以单体模块相当于一个二开模块的抽离,平台开发组只要将 witos框架整体打包成镜像或者Jar提供给二开部门即可
-#### 这样既避免了源码的泄露,又给予二级使用部门一定的开发权限
-#### 单体模块我只是做了一个例子,后续的使用需要根据各个公司的实际情况去进行二次订制
-#### 目前前端还没有做组件级封装,后续封装完成后会上传代码
+#### 监控告警与经营分析
+实时指标监控与 5 分钟历史时序聚合，基于「阈值 + 持续时长」的告警规则与多渠道通知；提供小时/日/月/年多维度经营报表、能量流分析与首页经营驾驶舱，助力运营决策。
 
-## 启动说明
+#### 多租户 SaaS 能力
+原生支持多租户隔离架构，可同时管理多个能源运营主体，数据独立、权限隔离，满足平台化运营需求。
 
-### 请参考保姆级教程  - [witos项目启动教程](https://www.witos.cn/archives/witos-xiang-mu-qi-dong-jiao-cheng)
+### 系统优势
 
-### 其他细节说明
-### 最新更新,项目已内置Nacos,直接启动即可
-#### 1.如果nacos自行运行 如果是 M1的芯片 会出现内核报错 采用下方nacos镜像即可  docker pull zhusaidong/nacos-server-m1:2.0.3
-     - 运行指令如下 
-     docker run --name nacos-standalone -e MODE=standalone -e JVM_XMS=512m -e JVM_XMX=512m -e JVM_XMN=256m -p 8848:8848 -d zhusaidong/nacos-server-m1:2.0.3
-     
-- 非M1芯片或者非docker环境请自行参考文档里的相关部署说明
-### 以下非必须，如果感觉修改host比较麻烦，可以自行都修改为127.0.0.1    
-#### 2.mysql,redis等自行安装根据需求修改配置文件里的端口和连接,目前nacos初始化的配置文件里写的地址都是host映射的地址,如果需要指定指定地址请自行修改
-     - Windows处于 C:\Windows\System32\drivers\etc
-     - Linux和Mac都属于 /etc/hosts下
-     
-    主要添加以下几个部分,不理解的自行百度,其中127.0.0.1为你自己的本机ip
-    127.0.0.1 witos-platform 
-    127.0.0.1 witos-nginx 
-    127.0.0.1 witos-nacos 
-    127.0.0.1 witos-mysql 
-    127.0.0.1 witos-gateway 
-    127.0.0.1 witos-auth 
-    127.0.0.1 witos-system 
-    127.0.0.1 witos-file 
-    127.0.0.1 witos-gen 
-    127.0.0.1 witos-monitor 
-    127.0.0.1 witos-redis 
-    127.0.0.1 witos-job
-    127.0.0.1 witos-demo
+#### 成熟稳定的微服务架构
+后端 Spring Boot + Spring Cloud Alibaba，Nacos 注册与配置中心、网关统一鉴权，模块化拆分清晰。
 
-#### 3.前后端启动说明
-     - 1.nacos和mysql以及redis正常运行后 优先启动gateway网关和 auth服务,其他的就可以同时启动了
-     - 2.前段部分,记得修改vue.config里的后端接口地址
+#### 规范的接口设计
+提供标准 RESTful 接口与统一数据结构，Swagger 在线文档，接口复用率高，便于二次开发与第三方系统集成。
 
+#### 多维度经营分析
+小时/日/月/年报表与能量流分析，经营数据支持 Excel 导出，助力运营决策。
 
-## 一键式体验(要求linux环境)
-##### 1.docker安装和docker-compose安装请参考文档里的-应用容器部署模块进行安装
-##### 2.安装完成后下载项目到任意文件夹目录,自行安装 maven,jdk,node环境 下面简单提供三个教程链接仅供参考
- - [Centos7安装JDK8](https://www.witos.cn/archives/centos7-an-zhuang-jdk18-tu-wen-jiao-cheng)
- - [Centos7安装maven](https://www.witos.cn/archives/centos7-an-zhuang-maven)
- - [Centos7安装nodejs14](https://www.witos.cn/archives/centos7-an-zhuang-nodejs14)
-##### 3.脚本执行
-      - 1.cd ./docker 目录下 执行 copy.sh 脚本会自动进行打包编译和copy
-      - 2.首先执行 sh deploy.sh base 命令进行 nacos,mysql,redis的初始化,初始化完成后建议等待10秒后执行查下一步
-      - 3.后面执行 项目脚本 sh deploy.sh modules ,如果防火墙没有关闭 还可以执行port指令请自行研究脚本
-      - 4.执行copy脚本前可以根据自己的需求自行替换相关变量 比如初始变量设置了 192.168.200.188这个虚拟机ip 可以根据需要自行全局替换
+#### 高效开发支持
+内置代码生成器，支持前后端代码一键生成，大幅减少重复工作，提升开发效率。
 
-## 功能截图
+#### 精细权限控制
+基于 Spring Security 实现 RBAC 角色权限控制，可精确到按钮级别，支持租户数据隔离与数据权限范围，保障系统安全。
 
-![witos-Platform4](./doc/readme/witos-1.png)
-![witos-Platform1](./doc/readme/witos-2.png)
-![witos-Platform3](./doc/readme/witos-3.png)
-![witos-Platform4](./doc/readme/witos-4.png)
-![witos-Platform4](./doc/readme/witos-5.png)
-![witos-Platform2](./doc/readme/witos-6.png)
-![witos-Platform4](./doc/readme/witos-7.png)
+#### 高可用设计
+内置 Redis 缓存、Sentinel 限流熔断、Seata 分布式事务与 XXL-JOB 定时任务，有效削峰解耦，提升系统并发能力与稳定性。
 
+---
 
+## 💻 技术特点
 
-## 系统模块
+### 运行环境及框架
 
-~~~
-com.witos     
-├── witos-ui              // 前端框架 [80]
-├── witos-gateway         // 网关模块 [38080]
-├── witos-auth            // 认证中心 [39200]
-├── witos-api             // 接口模块
-│       └── witos-api-system                          // 系统接口
-├── witos-demo         // 样例代码模块 [39203]
-├── witos-common          // 通用模块
-│       └── witos-common-core                         // 核心模块
-│       └── witos-common-datascope                    // 权限范围
-│       └── witos-common-datasource                   // 多数据源
-│       └── witos-common-log                          // 日志记录
-│       └── witos-common-redis                        // 缓存服务
-│       └── witos-common-security                     // 安全模块
-│       └── witos-common-swagger                      // 系统接口
-│       └── witos-common-message                      // 消息通知
-│       └── witos-common-mybatisplus                  // mybatis租户增强组件
-│       └── witos-common-seata                        // seata组件(未启用)
-├── witos-modules         // 业务模块
-│       └── witos-system                              // 系统模块 [39201]
-│       └── witos-gen                                 // 代码生成 [39202]
-│       └── witos-file                                // 文件服务 [39300]
-│       └── witos-job                                 // 定时任务服务 [39024]
-├── witos-visual          // 图形化管理模块
-│       └── witos-visual-monitor                      // 监控中心 [39100]
-├──pom.xml                // 公共依赖
-~~~
+1. 后台服务 Java Spring Boot + Spring Cloud Alibaba + MyBatis-Plus + MySQL + Redis + Nacos
+2. 运行环境 Linux 和 Windows 等都支持，只要有 Java 环境和对应的数据库、Redis、Nacos
+3. 运行条件 Java 1.8、MySQL 5.7+、Redis 5+、Nacos 2.x、Maven 3.6+
 
+### Java 项目框架版本
 
-## 内置功能
+```
+1. Spring Boot 2.7.18
+2. Spring Cloud 2021.0.8
+3. Spring Cloud Alibaba 2021.0.5.0
+4. MyBatis-Plus 3.5.0
+5. Nacos 2.1.1
+6. Seata 1.5.1
+7. XXL-JOB 2.3.0
+8. Maven 3.6+
+```
 
-1. 租户管理：配置系统租户，支持 SaaS 场景下的多租户功能。
-2. 配置租户套餐：自定每个租户的菜单、操作、按钮的权限。
-3. 用户管理：用户是系统操作者，该功能主要完成系统用户配置。
-4. 部门管理：配置系统组织机构（公司、部门、小组），树结构展现支持数据权限。
-5. 岗位管理：配置系统用户所属担任职务。
-6. 菜单管理：配置系统菜单，操作权限，按钮权限标识等。
-7. 角色管理：角色菜单权限分配、设置角色按机构进行数据范围权限划分。
-8. 字典管理：对系统中经常使用的一些较为固定的数据进行维护。
-9. 参数管理：对系统动态配置常用参数。
-10. 通知公告：系统通知公告信息发布维护。
-11. 操作日志：系统正常操作日志记录和查询；系统异常信息日志记录和查询。
-12. 登录日志：系统登录日志记录查询包含登录异常。
-13. 在线用户：当前系统中活跃用户状态监控。
-14. 代码生成：前后端代码的生成（java、html、xml、sql）支持CRUD下载 。
-15. 系统接口：根据业务代码自动生成相关的api接口文档。
-16. 服务监控：监视当前系统CPU、内存、磁盘、堆栈等相关信息。
-17. 在线构建器：拖动表单元素生成相应的HTML代码。
+### 项目代码包介绍
 
+```
+1. witos-register              注册与配置中心（Nacos）
+2. witos-gateway               微服务网关（统一鉴权、验证码、Sentinel 限流熔断）
+3. witos-auth（ems-auth）       认证授权中心（登录、令牌签发）
+4. witos-modules/ems_server     EMS 能源管理业务模块（企业/电站/设备/告警/报表/设备接入）
+5. witos-modules/witos-system   系统管理（租户/用户/角色/菜单/字典/日志）
+6. witos-modules/witos-file     文件服务（MinIO）
+7. witos-modules/witos-gen      代码生成
+8. witos-modules/witos-job      定时任务（XXL-JOB）
+9. witos-api/witos-api-system   系统模块远程调用接口
+10. witos-common/*              公共组件（核心/数据源/安全/日志/缓存/分布式事务/消息/MyBatis-Plus 扩展等）
+11. witos-visual/witos-monitor  服务监控（Spring Boot Admin + OSHI）
+12. witos-demo                  单体运行示例（二开模块抽离参考）
+```
 
+---
 
+## 系统演示
 
+在线演示：https://ems-pc.huizhidata.com/login?redirect=%2Fems-home%2Flist
 
+演示环境权限开放，请勿随意删除数据。本地启动体验见下方「快速开始」，启动后可通过 Swagger 在线查看与调试接口。
 
+## 📚 项目资料
+
+- 在线文档：https://ems-doc.huizhidata.com/（使用文档 / 接口文档）
+- 仓库内文档：`doc/` 目录包含 Nacos 配置示例等。
+- Swagger 接口文档：部署后访问各服务 `/swagger-ui.html` 在线查看。
+
+## 快速开始
+
+环境要求：JDK 1.8+、Maven 3.6+、MySQL 5.7+、Redis 5+、Nacos 2.x。
+
+1. 构建打包：执行 `bin/package.bat`（或 `mvn package`）构建各模块 Jar。
+2. 初始化数据库：依次导入 `sql/witos_platform.sql`（业务库）、`sql/witos_config.sql`（Nacos 配置库）、`sql/witos_seata.sql`（分布式事务库）；EMS 增量补丁按需执行 `sql/ems_opensource_device_patch.sql`。
+3. 导入 Nacos 配置：参考 `doc/` 下的 `*.yml` 示例与各服务 `resources/bootstrap.yml`，在 Nacos 配置中心创建对应 Data ID。
+4. 启动服务：先启动注册中心 Nacos，再按顺序执行 `bin/run-gateway.bat` → `bin/run-auth.bat` → `bin/run-modules-system.bat` → `bin/run-modules-ems-server.bat`，其余模块按需启动。
+5. 验证：在 Nacos 控制台查看服务注册情况，打开 Swagger 在线文档登录调试。
+
+---
+
+## 功能矩阵
+
+| 🔴 能源业务 | 🟠 设备接入（GOEMS） | 🟡 监控告警 | 🟢 经营分析 | 🔵 平台底座 | 🟣 系统设置 | 🟤 第三方对接 |
+|---|---|---|---|---|---|---|
+| 企业管理 | 服务端点接入 | 实时指标监控 | 小时/日/月/年报表 | 网关路由与鉴权 | 租户管理 | 天气服务 |
+| 电站管理 | 组件与能力建模 | 历史时序聚合 | 能量流分析 | 认证授权中心 | 租户套餐 | 腾讯地图 |
+| 设备管理 | 设备绑定与生命周期 | 告警规则 | 首页经营驾驶舱 | Sentinel 限流熔断 | 用户管理 | 邮件通知 |
+| 员工管理 | 时序数据同步 | 告警事件闭环 | 价格策略 | Seata 分布式事务 | 角色权限 | |
+| 业务参数配置 | 远程指令下发 | 邮件通知 | 数据导出 | Redis 缓存 | 菜单管理 | |
+| 心跳与状态监测 | 设备档案 | 告警通知日志 | | XXL-JOB 定时任务 | 部门/岗位 | |
+| | | | | 代码生成器 | 数据字典 | |
+| | | | | 文件服务（MinIO） | 通知公告 | |
+| | | | | 服务监控 | 操作/登录日志 | |
+
+## 相关文档
+
+- [Nacos 配置示例](./doc/)
+
+## 致谢
+
+本项目基于 [RuoYi-Cloud](https://gitee.com/y_project/RuoYi-Cloud) 与 [witos-platform](https://gitee.com/witos/witos-platform) 二次开发，感谢若依开源社区与 witos 开源作者的贡献。
+
+## 反馈与交流
+
+- 项目主页：https://github.com/roinli/GOEMS-cloud
+- 欢迎通过 GitHub Issues 提交 Bug、交流方案、获取更新动态。
+
+---
+
+© 2026 GOEMS 版权所有 · 开源协议：MIT License · 详见 [LICENSE](./LICENSE)
