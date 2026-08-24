@@ -22,16 +22,4 @@
           and create_time <![CDATA[<]]> #{beforeTime}
     </delete>
 
-    <delete id="deleteBackfillTasksBefore">
-        delete from ems_openems_backfill_task
-        where tenant_id = #{tenantId}
-          and create_time <![CDATA[<]]> #{beforeTime}
-    </delete>
-
-    <delete id="deleteResourceReportsBefore">
-        delete from ems_openems_resource_report
-        where tenant_id = #{tenantId}
-          and stat_time <![CDATA[<]]> #{beforeTime}
-    </delete>
-
 </mapper>

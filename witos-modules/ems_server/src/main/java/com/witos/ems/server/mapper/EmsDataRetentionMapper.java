@@ -12,7 +12,4 @@ public interface EmsDataRetentionMapper
 
     int deleteReportTasksBefore(@Param("tenantId") Long tenantId, @Param("beforeTime") Date beforeTime);
 
-    int deleteBackfillTasksBefore(@Param("tenantId") Long tenantId, @Param("beforeTime") Date beforeTime);
-
-    int deleteResourceReportsBefore(@Param("tenantId") Long tenantId, @Param("beforeTime") Date beforeTime);
 }

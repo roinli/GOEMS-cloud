@@ -30,8 +30,6 @@ public class EmsDataRetentionService
         result.put("metricHistory", retentionMapper.deleteMetricHistoryBefore(tenantId, detailBefore));
         result.put("syncLogs", retentionMapper.deleteSyncLogsBefore(tenantId, logBefore));
         result.put("reportTasks", retentionMapper.deleteReportTasksBefore(tenantId, taskBefore));
-        result.put("backfillTasks", retentionMapper.deleteBackfillTasksBefore(tenantId, taskBefore));
-        result.put("resourceReports", retentionMapper.deleteResourceReportsBefore(tenantId, detailBefore));
         return result;
     }
 

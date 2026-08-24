@@ -46,7 +46,6 @@ public class MyTenantHandler implements TenantLineHandler {
     @Override
     public boolean ignoreTable(String tableName) {
         return isSuperAdmin()
-                || "ems_channel_mapping".equalsIgnoreCase(tableName)
                 || properties.getIgnoreTables().contains(tableName);
     }
 

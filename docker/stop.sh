@@ -10,8 +10,6 @@ declare -A SERVICE_JARS=(
   [system]="ems-system.jar"
   [file]="ems-file.jar"
   [ems_server]="ems_server.jar"
-  [parking]="witos-parking.jar"
-  [simulator]="witos-parking-simulator.jar"
 )
 
 stop_service() {
@@ -32,10 +30,10 @@ usage() {
 Usage:
   ./stop.sh all
   ./stop.sh gateway auth
-  ./stop.sh ems_server parking simulator
+  ./stop.sh ems_server
 
 Service names:
-  gateway auth system file ems_server parking simulator
+  gateway auth system file ems_server
 EOF
 }
 
@@ -45,7 +43,7 @@ if [[ $# -eq 0 ]]; then
 fi
 
 if [[ "${1:-}" == "all" ]]; then
-  set -- gateway auth system file ems_server parking simulator
+  set -- gateway auth system file ems_server
 fi
 
 for service in "$@"; do

@@ -14,7 +14,6 @@ import com.witos.ems.server.mapper.EmsOptimizerComponentBindingMapper;
 import com.witos.ems.server.mapper.EmsStationViewNodeMapper;
 import com.witos.ems.server.mapper.EmsStationViewRelationMapper;
 import com.witos.ems.server.mapper.EmsStationViewTabMapper;
-import com.witos.ems.server.openems.EmsOpenemsRealtimeSyncService;
 import com.witos.ems.server.support.EmsBusinessParamTemplate;
 import com.witos.ems.server.support.EmsRequestSupport;
 import com.witos.ems.server.service.EmsMonitorService;
@@ -67,9 +66,6 @@ public class EmsMonitorServiceImpl implements EmsMonitorService
 
     @Resource
     private EmsOptimizerComponentBindingMapper optimizerComponentBindingMapper;
-
-    @Resource
-    private EmsOpenemsRealtimeSyncService openemsRealtimeSyncService;
 
     @Resource
     private EmsMetricProperties metricProperties;
@@ -336,33 +332,7 @@ public class EmsMonitorServiceImpl implements EmsMonitorService
         result.put("expiresAt", expiresAt);
         result.put("remainingCount", remainingCount - 1);
         result.put("monthlyLimit", sessionControl.get("monthlyLimit"));
-        attachRealtimeSyncResult(result, stationId);
         return result;
-    }
-
-    private void attachRealtimeSyncResult(Map<String, Object> result, Long stationId)
-    {
-        try
-        {
-            int affectedRows = openemsRealtimeSyncService.syncActiveBindings(stationId);
-            result.put("syncAffectedRows", affectedRows);
-            if (affectedRows > 0)
-            {
-                result.put("syncStatus", "SUCCESS");
-                result.put("syncMessage", "OpenEMS实时同步完成，写入 " + affectedRows + " 条采样");
-            }
-            else
-            {
-                result.put("syncStatus", "NO_DATA");
-                result.put("syncMessage", "已请求OpenEMS实时同步，但未写入新采样，请检查设备绑定和通道映射");
-            }
-        }
-        catch (Exception ex)
-        {
-            result.put("syncAffectedRows", 0);
-            result.put("syncStatus", "FAILED");
-            result.put("syncMessage", "OpenEMS实时同步失败：" + ex.getMessage());
-        }
     }
 
     @Override
@@ -1093,7 +1063,7 @@ public class EmsMonitorServiceImpl implements EmsMonitorService
         if (status == null)
         {
             row.put("syncStatus", "MISSING");
-            row.put("syncMessage", "未发现OpenEMS有效绑定或采样记录");
+            row.put("syncMessage", "开源版设备数据由前端模拟");
             row.put("latestSampleTime", "");
             row.put("lastSyncAttemptTime", "");
             return;

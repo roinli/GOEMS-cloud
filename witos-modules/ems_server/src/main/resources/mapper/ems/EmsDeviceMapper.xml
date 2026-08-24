@@ -26,23 +26,6 @@
                d.install_date as installDate,
                d.comm_status as commStatus,
                d.status,
-               dc.server_endpoint_id as serverEndpointId,
-               dc.edge_id as edgeId,
-               dc.component_id as componentId,
-               dc.component_type as componentType,
-               dc.component_alias as componentAlias,
-               dc.serial_no as bindSerialNo,
-               dc.parent_edge_id as parentEdgeId,
-               dc.parent_component_id as parentComponentId,
-               dc.bind_time as bindTime,
-               dc.unbind_time as unbindTime,
-               dc.bind_status as bindStatus,
-               dc.bind_source as bindSource,
-               dc.last_sample_time as lastSampleTime,
-               case
-                   when dc.component_id is null or dc.component_id = '' then null
-                   else concat(ifnull(dc.component_alias, ''), '(', dc.component_id, ')')
-                   end as componentBinding,
                d.create_time as createTime,
                d.update_time as updateTime,
                d.remark
@@ -50,7 +33,6 @@
                  left join ems_company c on c.id = d.company_id and c.del_flag = '0'
                  left join ems_station s on s.id = d.station_id and s.del_flag = '0'
                  left join ems_device ctl on ctl.id = d.controller_id and ctl.del_flag = '0'
-                 left join ems_device_component dc on dc.device_id = d.id and dc.del_flag = '0' and dc.bind_status = 'ACTIVE'
         where d.del_flag = '0'
     </sql>
 
@@ -103,14 +85,8 @@
         <if test="query.deviceCode != null and query.deviceCode != ''">
             and d.device_code like concat('%', #{query.deviceCode}, '%')
         </if>
-        <if test="query.componentId != null and query.componentId != ''">
-            and dc.component_id like concat('%', #{query.componentId}, '%')
-        </if>
         <if test="query.serialNo != null and query.serialNo != ''">
-            and (d.serial_no like concat('%', #{query.serialNo}, '%') or dc.serial_no like concat('%', #{query.serialNo}, '%'))
-        </if>
-        <if test="query.bindStatus != null and query.bindStatus != ''">
-            and dc.bind_status = #{query.bindStatus}
+            and d.serial_no like concat('%', #{query.serialNo}, '%')
         </if>
         <if test="query.deviceType != null and query.deviceType != ''">
             and d.device_type = #{query.deviceType}

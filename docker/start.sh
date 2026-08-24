@@ -10,8 +10,6 @@ declare -A SERVICE_DIRS=(
   [auth]="huimao-auth"
   [system]="huimao-system"
   [file]="huimao-file"
-  [parking]="huimao-parking"
-  [simulator]="huimao-simulator"
 )
 
 declare -A SERVICE_JARS=(
@@ -19,8 +17,6 @@ declare -A SERVICE_JARS=(
   [auth]="ems-auth.jar"
   [system]="ems-system.jar"
   [file]="ems-file.jar"
-  [parking]="witos-parking.jar"
-  [simulator]="witos-parking-simulator.jar"
 )
 
 mkdir -p "$LOG_DIR"
@@ -50,10 +46,9 @@ usage() {
 Usage:
   ./start.sh all
   ./start.sh gateway auth
-  ./start.sh parking simulator
 
 Service names:
-  gateway auth system file parking simulator
+  gateway auth system file
 EOF
 }
 
@@ -63,7 +58,7 @@ if [[ $# -eq 0 ]]; then
 fi
 
 if [[ "${1:-}" == "all" ]]; then
-  set -- gateway auth system file parking simulator
+  set -- gateway auth system file
 fi
 
 for service in "$@"; do

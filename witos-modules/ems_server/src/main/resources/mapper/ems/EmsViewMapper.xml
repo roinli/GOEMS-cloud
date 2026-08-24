@@ -241,9 +241,7 @@
             select ms.tenant_id,
                    ms.station_id,
                    case
-                       when cm.source_priority is not null then cm.source_priority
-                       when cm.source_role = 'PRODUCTION_METER' then 10
-                       when cm.source_role = 'INVERTER' then 20
+                       when d.device_type = 'METER' then 10
                        when d.device_type = 'INVERTER' then 20
                        else 100
                    end as source_rank,
@@ -251,19 +249,10 @@
             from ems_metric_snapshot ms
                      inner join ems_device d on d.id = ms.device_id and d.del_flag = '0'
                      inner join station_scope scope on scope.tenant_id = ms.tenant_id and scope.station_id = ms.station_id
-                     left join ems_device_component dc on dc.tenant_id = ms.tenant_id
-                         and dc.device_id = ms.device_id
-                         and dc.bind_status = 'ACTIVE'
-                         and dc.enabled = '0'
-                         and dc.del_flag = '0'
-                     left join ems_channel_mapping cm on cm.enabled = '0'
-                         and cm.metric_key = ms.metric_key
-                         and (cm.device_type is null or cm.device_type = dc.component_type)
-                         and (cm.component_id_pattern is null or dc.component_id regexp cm.component_id_pattern)
             where ms.sample_time &gt;= date_sub(now(), interval 10 minute)
               and ms.quality = 'GOOD'
               and ms.metric_key in ('activePower', 'activePowerKw', 'active_power_kw', 'power')
-              and (cm.source_role in ('PRODUCTION_METER', 'INVERTER') or d.device_type = 'INVERTER')
+              and d.device_type in ('METER', 'INVERTER')
         ), snapshot_power_rank as (
             select tenant_id,
                    station_id,
@@ -793,111 +782,17 @@
     </select>
 
     <select id="selectStationSyncStatus" resultType="java.util.LinkedHashMap">
-        with binding_scope as (
-            select id, tenant_id, station_id, device_id, last_sample_time
-            from ems_device_component
-            where bind_status = 'ACTIVE'
-              and enabled = '0'
-              and del_flag = '0'
-              and station_id in
-            <foreach collection="stationIds" item="stationId" open="(" separator="," close=")">
-                #{stationId}
-            </foreach>
-        ),
-        component_sample as (
-            select b.id as component_id,
-                   b.tenant_id,
-                   b.station_id,
-                   nullif(greatest(ifnull(b.last_sample_time, cast('1970-01-01 00:00:00' as datetime)),
-                                   ifnull(max(ms.sample_time), cast('1970-01-01 00:00:00' as datetime))),
-                          cast('1970-01-01 00:00:00' as datetime)) as sample_time
-            from binding_scope b
-                     left join ems_metric_snapshot ms on ms.tenant_id = b.tenant_id
-                         and ms.station_id = b.station_id
-                         and ms.device_id = b.device_id
-            group by b.id, b.tenant_id, b.station_id, b.last_sample_time
-        ),
-        component_cursor as (
-            select b.id as component_id,
-                   b.tenant_id,
-                   b.station_id,
-                   cur.status,
-                   cur.last_attempt_time,
-                   cur.error_message
-            from binding_scope b
-                     left join ems_metric_sync_cursor cur on cur.tenant_id = b.tenant_id
-                         and cur.device_component_id = b.id
-        ),
-        latest_log_time as (
-            select tenant_id,
-                   station_id,
-                   max(coalesce(finished_at, started_at, create_time)) as log_time
-            from ems_sync_log
-            where sync_type in ('OPENEMS_REALTIME', 'OPENEMS_HISTORY_5MIN')
-              and station_id in
-            <foreach collection="stationIds" item="stationId" open="(" separator="," close=")">
-                #{stationId}
-            </foreach>
-            group by tenant_id, station_id
-        ),
-        latest_log as (
-            select sl.tenant_id,
-                   sl.station_id,
-                   max(sl.status) as status,
-                   lt.log_time,
-                   group_concat(distinct nullif(sl.error_message, '') order by sl.error_message separator ';') as error_message
-            from latest_log_time lt
-                     inner join ems_sync_log sl on sl.tenant_id = lt.tenant_id
-                         and sl.station_id = lt.station_id
-                         and coalesce(sl.finished_at, sl.started_at, sl.create_time) = lt.log_time
-            group by sl.tenant_id, sl.station_id, lt.log_time
-        ),
-        station_rollup as (
-            select b.tenant_id,
-                   b.station_id,
-                   max(cs.sample_time) as latestSampleTime,
-                   max(cc.last_attempt_time) as lastCursorAttemptTime,
-                   sum(case when cs.sample_time is null then 1 else 0 end) as missingComponentCount,
-                   sum(case
-                           when cc.status = 'FAILED'
-                                and (cs.sample_time is null or cc.last_attempt_time is null or cc.last_attempt_time &gt;= cs.sample_time)
-                               then 1
-                           else 0
-                       end) as failedComponentCount,
-                   group_concat(distinct nullif(case
-                           when cc.status = 'FAILED'
-                                and (cs.sample_time is null or cc.last_attempt_time is null or cc.last_attempt_time &gt;= cs.sample_time)
-                               then cc.error_message
-                           else null
-                       end, '') order by cc.error_message separator ';') as cursorMessage
-            from binding_scope b
-                     left join component_sample cs on cs.component_id = b.id
-                     left join component_cursor cc on cc.component_id = b.id
-            group by b.tenant_id, b.station_id
-        )
-        select sr.station_id as stationId,
-               sr.latestSampleTime,
-               nullif(greatest(ifnull(sr.lastCursorAttemptTime, cast('1970-01-01 00:00:00' as datetime)),
-                               ifnull(ll.log_time, cast('1970-01-01 00:00:00' as datetime))),
-                      cast('1970-01-01 00:00:00' as datetime)) as lastAttemptTime,
-               case
-                   when sr.latestSampleTime is null then 'MISSING'
-                   when ifnull(sr.failedComponentCount, 0) &gt; 0
-                        or (ll.status = 'FAILED' and ll.log_time &gt;= sr.latestSampleTime) then 'FAILED'
-                   when ifnull(sr.missingComponentCount, 0) &gt; 0 then 'PARTIAL'
-                   else 'OK'
-               end as syncStatus,
-               case
-                   when ifnull(sr.failedComponentCount, 0) &gt; 0
-                        or (ll.status = 'FAILED' and ll.log_time &gt;= sr.latestSampleTime)
-                       then concat_ws(';', nullif(sr.cursorMessage, ''),
-                                      nullif(case when ll.status = 'FAILED' and ll.log_time &gt;= sr.latestSampleTime then ll.error_message else null end, ''))
-                   when sr.latestSampleTime is null then '未发现OpenEMS有效采样记录'
-                   when ifnull(sr.missingComponentCount, 0) &gt; 0 then concat(sr.missingComponentCount, '个OpenEMS绑定尚无实时采样')
-                   else ''
-               end as syncMessage
-        from station_rollup sr
-                 left join latest_log ll on ll.tenant_id = sr.tenant_id and ll.station_id = sr.station_id
+        select station_id as stationId,
+               max(sample_time) as latestSampleTime,
+               max(sample_time) as lastAttemptTime,
+               case when max(sample_time) is null then 'MISSING' else 'OK' end as syncStatus,
+               case when max(sample_time) is null then '暂无有效采样记录' else '' end as syncMessage
+        from ems_metric_snapshot
+        where station_id in
+        <foreach collection="stationIds" item="stationId" open="(" separator="," close=")">
+            #{stationId}
+        </foreach>
+        group by station_id
     </select>
 
     <select id="selectActiveAlarmCountByDeviceIds" resultType="java.util.LinkedHashMap">

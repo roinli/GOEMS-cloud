@@ -50,7 +50,7 @@ public class AuthFilterTest
         String token = JwtUtils.createToken(claims);
         when(redisService.hasKey(anyString())).thenReturn(true);
 
-        MockServerHttpRequest request = MockServerHttpRequest.get("/ems/openems-devices/list")
+        MockServerHttpRequest request = MockServerHttpRequest.get("/ems/device/list")
                 .header(HttpHeaders.AUTHORIZATION, TokenConstants.PREFIX + token)
                 .build();
         MockServerWebExchange exchange = MockServerWebExchange.from(request);

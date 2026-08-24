@@ -110,7 +110,7 @@ public class EmsHomeServiceImpl implements EmsHomeService
         if (status == null)
         {
             row.put("syncStatus", "MISSING");
-            row.put("syncMessage", "未发现OpenEMS有效绑定或采样记录");
+            row.put("syncMessage", "开源版设备数据由前端模拟");
             row.put("latestSampleTime", "");
             row.put("lastSyncAttemptTime", "");
             return;

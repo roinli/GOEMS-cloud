@@ -1527,123 +1527,6 @@ CREATE TABLE `ems_business_param` (
   UNIQUE KEY `uk_ems_business_param_scope_key` (`tenant_id`, `company_id`, `station_id`, `param_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='EMS业务配置表';
 
--- ----------------------------
--- 2. server 数据桥接
--- ----------------------------
-
-DROP TABLE IF EXISTS `ems_server_endpoint`;
-CREATE TABLE `ems_server_endpoint` (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `scope_type` varchar(32) NOT NULL DEFAULT 'TENANT' COMMENT '端点作用域：一期仅TENANT',
-  `tenant_id` bigint NOT NULL COMMENT '安装商租户ID',
-  `endpoint_code` varchar(64) NOT NULL COMMENT '端点编码',
-  `endpoint_name` varchar(128) DEFAULT NULL COMMENT '端点名称',
-  `base_url` varchar(512) NOT NULL COMMENT 'server访问地址',
-  `auth_type` varchar(32) DEFAULT 'NONE' COMMENT '认证方式：NONE/API_KEY/BASIC/OAUTH2/BEARER',
-  `credential_ref` varchar(256) DEFAULT NULL COMMENT '凭据引用，不保存明文',
-  `enabled` char(1) DEFAULT '0' COMMENT '是否启用：0启用，1停用',
-  `del_flag` char(1) DEFAULT '0' COMMENT '删除标志：0存在，2删除',
-  `create_by` varchar(64) DEFAULT '' COMMENT '创建者',
-  `create_time` datetime DEFAULT NULL COMMENT '创建时间',
-  `update_by` varchar(64) DEFAULT '' COMMENT '更新者',
-  `update_time` datetime DEFAULT NULL COMMENT '更新时间',
-  `remark` varchar(512) DEFAULT NULL COMMENT '备注',
-  `active_endpoint_code` varchar(64) GENERATED ALWAYS AS (CASE WHEN `del_flag` = '0' THEN `endpoint_code` ELSE NULL END) STORED COMMENT '未删除端点编码唯一键',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_ems_server_endpoint_tenant_code_active` (`tenant_id`, `active_endpoint_code`),
-  KEY `idx_ems_server_endpoint_tenant_enabled` (`tenant_id`, `enabled`, `del_flag`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='EMS server端点配置表';
-
-DROP TABLE IF EXISTS `ems_station_edge`;
-CREATE TABLE `ems_station_edge` (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `tenant_id` bigint NOT NULL COMMENT '安装商租户ID',
-  `company_id` bigint NOT NULL COMMENT '公司ID',
-  `station_id` bigint NOT NULL COMMENT '电站ID',
-  `server_endpoint_id` bigint NOT NULL COMMENT 'server端点ID',
-  `edge_id` varchar(128) NOT NULL COMMENT 'OpenEMS Edge ID',
-  `edge_name` varchar(128) DEFAULT NULL COMMENT 'OpenEMS Edge名称',
-  `online_status` varchar(32) DEFAULT 'UNKNOWN' COMMENT '在线状态：ONLINE/OFFLINE/UNKNOWN',
-  `sum_state` varchar(32) DEFAULT NULL COMMENT 'OpenEMS汇总状态',
-  `last_seen_time` datetime DEFAULT NULL COMMENT '最后通讯时间',
-  `enabled` char(1) DEFAULT '0' COMMENT '是否启用：0启用，1停用',
-  `del_flag` char(1) DEFAULT '0' COMMENT '删除标志：0存在，2删除',
-  `create_by` varchar(64) DEFAULT '' COMMENT '创建者',
-  `create_time` datetime DEFAULT NULL COMMENT '创建时间',
-  `update_by` varchar(64) DEFAULT '' COMMENT '更新者',
-  `update_time` datetime DEFAULT NULL COMMENT '更新时间',
-  `remark` varchar(512) DEFAULT NULL COMMENT '备注',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_ems_station_edge_station` (`tenant_id`, `station_id`),
-  UNIQUE KEY `uk_ems_station_edge_openems` (`server_endpoint_id`, `edge_id`),
-  KEY `idx_ems_station_edge_company` (`tenant_id`, `company_id`),
-  KEY `idx_ems_station_edge_status` (`online_status`, `last_seen_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='EMS电站与OpenEMS Edge映射表';
-
-DROP TABLE IF EXISTS `ems_device_component`;
-CREATE TABLE `ems_device_component` (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `tenant_id` bigint NOT NULL COMMENT '安装商租户ID',
-  `company_id` bigint NOT NULL COMMENT '公司ID',
-  `station_id` bigint NOT NULL COMMENT '电站ID',
-  `device_id` bigint NOT NULL COMMENT 'EMS设备ID',
-  `server_endpoint_id` bigint NOT NULL COMMENT 'server端点ID',
-  `edge_id` varchar(128) NOT NULL COMMENT 'OpenEMS Edge ID',
-  `component_id` varchar(128) NOT NULL COMMENT 'OpenEMS Component ID',
-  `component_type` varchar(64) DEFAULT NULL COMMENT '组件类型',
-  `component_alias` varchar(128) DEFAULT NULL COMMENT '组件别名',
-  `serial_no` varchar(128) DEFAULT NULL COMMENT '设备SN，来自OpenEMS组件或设备属性',
-  `parent_edge_id` varchar(128) DEFAULT NULL COMMENT '上级设备所在OpenEMS Edge ID',
-  `parent_component_id` varchar(128) DEFAULT NULL COMMENT '上级OpenEMS Component ID',
-  `bind_time` datetime DEFAULT NULL COMMENT '绑定生效时间',
-  `unbind_time` datetime DEFAULT NULL COMMENT '解绑时间，当前绑定为空',
-  `bind_status` varchar(32) DEFAULT 'ACTIVE' COMMENT '绑定状态：ACTIVE/UNBOUND',
-  `bind_source` varchar(32) DEFAULT 'SN_LOOKUP' COMMENT '绑定来源：SN_LOOKUP/MANUAL_MIGRATION',
-  `last_sample_time` datetime DEFAULT NULL COMMENT '最近成功采样时间',
-  `enabled` char(1) DEFAULT '0' COMMENT '是否启用：0启用，1停用',
-  `del_flag` char(1) DEFAULT '0' COMMENT '删除标志：0存在，2删除',
-  `create_by` varchar(64) DEFAULT '' COMMENT '创建者',
-  `create_time` datetime DEFAULT NULL COMMENT '创建时间',
-  `update_by` varchar(64) DEFAULT '' COMMENT '更新者',
-  `update_time` datetime DEFAULT NULL COMMENT '更新时间',
-  `remark` varchar(512) DEFAULT NULL COMMENT '备注',
-  PRIMARY KEY (`id`),
-  KEY `idx_ems_device_component_device` (`tenant_id`, `device_id`, `bind_status`, `del_flag`),
-  KEY `idx_ems_device_component_station` (`tenant_id`, `station_id`),
-  KEY `idx_ems_device_component_openems` (`server_endpoint_id`, `edge_id`, `component_id`),
-  KEY `idx_ems_device_component_sn` (`tenant_id`, `serial_no`, `bind_status`, `del_flag`),
-  KEY `idx_ems_device_component_parent` (`tenant_id`, `station_id`, `parent_component_id`, `bind_status`),
-  KEY `idx_ems_device_component_sample` (`tenant_id`, `last_sample_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='EMS设备与OpenEMS Component映射表';
-
-DROP TABLE IF EXISTS `ems_channel_mapping`;
-CREATE TABLE `ems_channel_mapping` (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `metric_key` varchar(128) NOT NULL COMMENT 'EMS业务指标编码',
-  `metric_name` varchar(128) DEFAULT NULL COMMENT 'EMS业务指标名称',
-  `device_type` varchar(64) DEFAULT NULL COMMENT '适用设备类型',
-  `component_id_pattern` varchar(128) DEFAULT NULL COMMENT '组件ID匹配规则',
-  `channel_address` varchar(256) NOT NULL COMMENT 'OpenEMS Channel地址',
-  `unit` varchar(32) DEFAULT NULL COMMENT '单位',
-  `scale_factor` decimal(18,6) DEFAULT 1.000000 COMMENT '缩放系数',
-  `value_type` varchar(32) DEFAULT 'NUMBER' COMMENT '值类型：NUMBER/STRING/BOOLEAN',
-  `sample_method` varchar(32) DEFAULT 'AVG' COMMENT '5分钟采样方法：AVG/LAST/MAX/MIN/DELTA/PERIOD_SUM/COUNT',
-  `report_method` varchar(32) DEFAULT 'AVG' COMMENT '报表聚合方法：SUM/AVG/MAX/MIN/LAST',
-  `source_role` varchar(64) DEFAULT NULL COMMENT '指标来源角色：PRODUCTION_METER/GRID_METER/INVERTER/PCS/ESS/SUM',
-  `source_priority` int DEFAULT 100 COMMENT '同一业务指标多来源优先级，数值越小优先级越高',
-  `enabled` char(1) DEFAULT '0' COMMENT '是否启用：0启用，1停用',
-  `create_by` varchar(64) DEFAULT '' COMMENT '创建者',
-  `create_time` datetime DEFAULT NULL COMMENT '创建时间',
-  `update_by` varchar(64) DEFAULT '' COMMENT '更新者',
-  `update_time` datetime DEFAULT NULL COMMENT '更新时间',
-  `remark` varchar(512) DEFAULT NULL COMMENT '备注',
-  PRIMARY KEY (`id`),
-  KEY `idx_ems_channel_mapping_metric` (`metric_key`),
-  KEY `idx_ems_channel_mapping_device` (`device_type`),
-  KEY `idx_ems_channel_mapping_channel` (`channel_address`),
-  KEY `idx_ems_channel_mapping_source` (`device_type`, `metric_key`, `source_priority`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='EMS业务指标与OpenEMS通道映射表';
-
 DROP TABLE IF EXISTS `ems_metric_history_5min`;
 CREATE TABLE `ems_metric_history_5min` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -1651,10 +1534,8 @@ CREATE TABLE `ems_metric_history_5min` (
   `company_id` bigint NOT NULL COMMENT '公司ID',
   `station_id` bigint NOT NULL COMMENT '电站ID',
   `device_id` bigint NOT NULL COMMENT 'EMS设备ID',
-  `device_component_id` bigint DEFAULT NULL COMMENT '设备绑定ID',
-  `server_endpoint_id` bigint NOT NULL COMMENT 'server端点ID',
-  `edge_id` varchar(128) NOT NULL COMMENT 'OpenEMS Edge ID',
-  `component_id` varchar(128) NOT NULL COMMENT 'OpenEMS Component ID',
+  `edge_id` varchar(128) DEFAULT NULL COMMENT '数据来源标识',
+  `component_id` varchar(128) DEFAULT NULL COMMENT '数据来源组件标识',
   `serial_no` varchar(128) DEFAULT NULL COMMENT '设备SN',
   `metric_key` varchar(128) NOT NULL COMMENT 'EMS指标编码',
   `report_method` varchar(32) DEFAULT 'SUM' COMMENT '报表聚合方法：SUM/AVG/MAX/MIN/LAST',
@@ -1675,27 +1556,9 @@ CREATE TABLE `ems_metric_history_5min` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_ems_metric_history_5min` (`tenant_id`, `device_id`, `metric_key`, `bucket_time`),
   KEY `idx_ems_metric_history_station_time` (`tenant_id`, `station_id`, `bucket_time`),
-  KEY `idx_ems_metric_history_component_time` (`server_endpoint_id`, `edge_id`, `component_id`, `bucket_time`),
+  KEY `idx_ems_metric_history_source_time` (`edge_id`, `component_id`, `bucket_time`),
   KEY `idx_ems_metric_history_metric_time` (`tenant_id`, `metric_key`, `bucket_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='EMS 5分钟历史指标表';
-
-DROP TABLE IF EXISTS `ems_metric_sync_cursor`;
-CREATE TABLE `ems_metric_sync_cursor` (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `tenant_id` bigint NOT NULL COMMENT '安装商租户ID',
-  `device_component_id` bigint NOT NULL COMMENT '设备组件绑定ID',
-  `last_success_bucket_time` datetime DEFAULT NULL COMMENT '最近成功5分钟桶',
-  `last_attempt_time` datetime DEFAULT NULL COMMENT '最近尝试时间',
-  `status` varchar(32) DEFAULT 'IDLE' COMMENT '状态：IDLE/RUNNING/FAILED',
-  `error_message` varchar(1024) DEFAULT NULL COMMENT '错误信息',
-  `create_by` varchar(64) DEFAULT '' COMMENT '创建者',
-  `create_time` datetime DEFAULT NULL COMMENT '创建时间',
-  `update_by` varchar(64) DEFAULT '' COMMENT '更新者',
-  `update_time` datetime DEFAULT NULL COMMENT '更新时间',
-  `remark` varchar(512) DEFAULT NULL COMMENT '备注',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_ems_metric_sync_cursor_binding` (`tenant_id`, `device_component_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='EMS历史指标采集游标表';
 
 DROP TABLE IF EXISTS `ems_sync_log`;
 CREATE TABLE `ems_sync_log` (

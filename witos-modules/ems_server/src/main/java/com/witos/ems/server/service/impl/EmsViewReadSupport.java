@@ -310,7 +310,7 @@ public class EmsViewReadSupport
             if (quality == null)
             {
                 device.put("realtimeQuality", "MISSING");
-                device.put("realtimeQualityReason", "未找到OpenEMS实时采样快照");
+                device.put("realtimeQualityReason", "开源版使用前端模拟遥测");
                 device.put("realtimeSampleTime", "");
                 continue;
             }
