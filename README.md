@@ -31,11 +31,11 @@ GOEMS 基于 MIT 协议发布，代码全开源无加密、可免费商用，适
 
 系统采用 Java + Spring Cloud Alibaba 微服务架构，后端基于 RuoYi-Cloud 多租户版（witos-platform）二次开发，前后端分离设计清晰。通过 GOEMS 设备接入层对接边缘能源设备，实现设备接入、时序采集、远程管控、告警通知与经营分析的完整闭环；原生多租户隔离，可同时服务多个能源运营主体，数据独立、权限隔离。
 
+![数据大屏](./doc/readme/ems-screen.png)
 ![首页列表视图（电站经营驾驶舱）](./doc/readme/ems-home.png)
 ![电站报表](./doc/readme/ems-report.png)
 ![告警管理](./doc/readme/ems-alarm.png)
 ![设备管理](./doc/readme/ems-device.png)
-![数据大屏](./doc/readme/ems-screen.png)
 
 ### 核心功能
 
