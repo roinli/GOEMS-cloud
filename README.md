@@ -37,8 +37,29 @@ GOEMS 基于 MIT 协议发布，代码全开源无加密、可免费商用，适
 ![告警管理](./doc/readme/ems-alarm.png)
 ![设备管理](./doc/readme/ems-device.png)
 
-### 核心功能
+---
 
+## 系统演示
+
+在线演示：https://ems-pc.huizhidata.com/login?redirect=%2Fems-home%2Flist
+
+演示环境权限开放，请勿随意删除数据。本地启动体验见下方「快速开始」，启动后可通过 Swagger 在线查看与调试接口。
+
+<p align="center">
+    <img src="./doc/readme/wo.png" alt="扫码加微信交流">
+</p>
+
+---
+
+## 📚 项目资料
+
+- 在线文档：https://ems-doc.huizhidata.com/  （使用文档 / 接口文档）
+- 仓库内文档：`doc/` 目录包含 Nacos 配置示例等。
+- Swagger 接口文档：部署后访问各服务 `/swagger-ui.html` 在线查看。
+
+---
+
+## 核心功能
 
 #### 能源驾驶舱
 统一呈现公司、电站、设备、功率、电量、收益、告警与社会贡献数据，支持列表、地图、KPI 与数据大屏多视图切换，一屏掌握整体运营态势。
@@ -67,7 +88,9 @@ GOEMS 基于 MIT 协议发布，代码全开源无加密、可免费商用，适
 #### 微服务高扩展
 Spring Boot + Spring Cloud Alibaba + Nacos + Gateway + Security + MyBatis-Plus + Redis + ECharts 开箱即用，便于持续二开。
 
-### 系统优势
+---
+
+## 系统优势
 
 #### 成熟稳定的微服务架构
 后端 Spring Boot + Spring Cloud Alibaba，Nacos 注册与配置中心、网关统一鉴权，模块化拆分清晰。
@@ -126,24 +149,6 @@ Spring Boot + Spring Cloud Alibaba + Nacos + Gateway + Security + MyBatis-Plus +
 11. witos-visual/witos-monitor  服务监控（Spring Boot Admin + OSHI）
 12. witos-demo                  单体运行示例（二开模块抽离参考）
 ```
-
----
-
-## 系统演示
-
-在线演示：https://ems-pc.huizhidata.com/login?redirect=%2Fems-home%2Flist
-
-演示环境权限开放，请勿随意删除数据。本地启动体验见下方「快速开始」，启动后可通过 Swagger 在线查看与调试接口。
-
-<p align="center">
-    <img src="./doc/readme/wo.png" alt="扫码加微信交流">
-</p>
-
-## 📚 项目资料
-
-- 在线文档：https://ems-doc.huizhidata.com/  （使用文档 / 接口文档）
-- 仓库内文档：`doc/` 目录包含 Nacos 配置示例等。
-- Swagger 接口文档：部署后访问各服务 `/swagger-ui.html` 在线查看。
 
 ## 快速开始
 
