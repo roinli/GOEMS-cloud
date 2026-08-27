@@ -176,8 +176,6 @@ Spring Boot + Spring Cloud Alibaba + Nacos + Gateway + Security + MyBatis-Plus +
 | | | | | 文件服务（MinIO） | 通知公告 | |
 | | | | | 服务监控 | 操作/登录日志 | |
 
-> 注：以上按平台完整能力展示，云边协同等能力为商业版专有，开源版以仓库代码为准。
-
 ## 相关文档
 
 - [Nacos 配置示例](./doc/)
